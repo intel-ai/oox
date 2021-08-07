@@ -1,9 +1,19 @@
-#include "oox.h"
-
-/////////////////////////////////////// EXAMPLES ////////////////////////////////////////
+#include <iostream>
 #include <numeric>
 #include <vector>
 //#include <tbb/concurrent_vector.h>
+
+bool g_oox_verbose = false;
+#define println(s, ...) printf(s "\n",  __VA_ARGS__)
+#define __OOX_TRACE if (g_oox_verbose) println
+
+#include "oox.h"
+
+#define REMARK println
+#define ASSERT __OOX_ASSERT_EX
+
+/////////////////////////////////////// EXAMPLES ////////////////////////////////////////
+
 namespace ArchSample {
     // example from original OOX
     typedef int T;

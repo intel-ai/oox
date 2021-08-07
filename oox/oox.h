@@ -2,23 +2,22 @@
 #include <functional>
 #include <type_traits>
 #include <limits>
-#include <iostream>
 #include <atomic>
-#include <cassert>
 #include <future>
 
-
-bool Verbose = false;
-#define println(s, ...) printf(s "\n",  __VA_ARGS__)
-#define TRACE if (Verbose) println
-#define REMARK println
-
+#ifndef OOX_SERIAL
 #define OOX_SERIAL 0
-
-#define __OOX_AUTO_TYPE_FUNC(expr) ->decltype(expr) { return expr; }
+#endif
+#ifndef __OOX_TRACE
+#define __OOX_TRACE(...)
+#endif
+#ifndef __OOX_ASSERT
+#include <cassert>
 #define __OOX_ASSERT(a, b) assert(a), b
 #define __OOX_ASSERT_EX(a, b) __OOX_ASSERT(a, b)
-#define ASSERT __OOX_ASSERT_EX
+#endif
+
+#define __OOX_AUTO_TYPE_FUNC(expr) ->decltype(expr) { return expr; }
 
 #if OOX_SERIAL == 1 //////////////////// Immediate execution //////////////////////////////////
 class oox_node {
@@ -196,12 +195,12 @@ int task_node::assign_prerequisite( task_node *n, int req_port ) {
     arc* j = new arc( this, req_port ); // TODO: embed into the task
     __OOX_ASSERT_EX(j && n, nullptr);
     if( n->add_arc(j) ) {
-        TRACE("%p assign_prerequisite: assigned to %p, %d",this,n,req_port);
+        __OOX_TRACE("%p assign_prerequisite: assigned to %p, %d",this,n,req_port);
         return 1; // Prerequisite n will decrement start_count when it produces a value
     } else {
         // Prerequisite n already produced a value. Add this as a consumer of n.
         int k = ++n->out(req_port).countdown;
-        TRACE("%p assign_prerequisite: preventing %p, port %d, count %d",this,n,req_port,k);
+        __OOX_TRACE("%p assign_prerequisite: preventing %p, port %d, count %d",this,n,req_port,k);
         __OOX_ASSERT_EX(k>1,"risk that a prerequisite might be prematurely destroyed");
         j->node = n;
         j->kind = arc::back_only;
@@ -219,7 +218,7 @@ void task_node::do_notify_arcs( arc* r, int *count ) {
         task_node* n = j->node;
         if( j->kind == arc::back_only ) {
             // Notify producer that this task has finished consuming its value
-            TRACE("%p notify: %p->remove_back_arc(%d)",this,n,j->port);
+            __OOX_TRACE("%p notify: %p->remove_back_arc(%d)",this,n,j->port);
             if( int k = n->remove_back_arc( j->port ) )
                 n->release( k );
             delete j;
@@ -239,7 +238,7 @@ void task_node::do_notify_arcs( arc* r, int *count ) {
             else if( j->kind == arc::forward_copy )
                 __OOX_ASSERT(false, "incorrect forwarding"); // has to be processed by forward_successors only
             // Let "n" know that prerequisite "this" is ready.
-            TRACE("%p notify: %p->remove_prequisite()",this,n);
+            __OOX_TRACE("%p notify: %p->remove_prequisite()",this,n);
             n->remove_prerequisite();
         }
     } while( r );
@@ -251,15 +250,15 @@ int task_node::do_notify_out( int port, int count ) {
         && out(port).next_writer.compare_exchange_strong( null, (task_node*)uintptr_t(1)) ) {
         // The thread that installs the non-nullptr "next_writer" will see the 1 and do the decrement.
         --count;
-        TRACE("%p notify out %d: next_writer went from 0 to 1",this,port);
+        __OOX_TRACE("%p notify out %d: next_writer went from 0 to 1",this,port);
     } else if( !(uintptr_t((void*)out(port).next_writer.load(std::memory_order_acquire))&1) ) {
 #if OOX_AFFINITY
         task_node* d = out(port).next_writer;
         d->affinity = a;
 #endif /* OOX_AFFINITY */
-        TRACE("%p notify out %d: next_writer is %p\n",this,port,out(port).next_writer.load(std::memory_order_acquire));
+        __OOX_TRACE("%p notify out %d: next_writer is %p\n",this,port,out(port).next_writer.load(std::memory_order_acquire));
     } else {
-        TRACE("%p notify out %d: next_writer is final: %p\n",this,port,out(port).next_writer.load(std::memory_order_acquire));
+        __OOX_TRACE("%p notify out %d: next_writer is final: %p\n",this,port,out(port).next_writer.load(std::memory_order_acquire));
     }
     return remove_back_arc( port, count );
 }
@@ -269,7 +268,7 @@ int task_node::notify_successors( int output_slots, int *count ) {
         // it should be safe to assign countdowns here because no successors were notified yet
         out(i).countdown.store( count[i] = std::numeric_limits<int>::max()/2, std::memory_order_release );
     }
-    TRACE("%p notify successors",this);
+    __OOX_TRACE("%p notify successors",this);
     // Grab list of successors and mark as competed.
     // Note that countdowns can change asynchronously after this point
     if( arc* r = head.exchange( (arc*)uintptr_t(1) ) )
@@ -290,7 +289,7 @@ void task_node::remove_prerequisite( int n ) {
         if( affinity )
             t.set_affinity(affinity);
 #endif /* OOX_AFFINITY */
-        TRACE("%p remove_prerequisite: spawning",this);
+        __OOX_TRACE("%p remove_prerequisite: spawning",this);
         auto f = std::async(std::launch::async, &task_node::execute, this);  //tbb::task::spawn( *this );
     }
 }
@@ -315,7 +314,7 @@ int task_node::notify_next_writer( task_node* d ) {
 int task_node::remove_back_arc( int output_port, int n ) {
     int k = out(output_port).countdown -= n;
     __OOX_ASSERT(k>=0,"invalid countdown detected while removing back_arc");
-    TRACE("%p remove_back_arc port %d: %d (next_writer is %p)",this,output_port,k,out(output_port).next_writer.load(std::memory_order_acquire));
+    __OOX_TRACE("%p remove_back_arc port %d: %d (next_writer is %p)",this,output_port,k,out(output_port).next_writer.load(std::memory_order_acquire));
     if( k==0 ) {
         // Next writer was waiting on all consumers of me to finish.
         return notify_next_writer( out(output_port).next_writer.load(std::memory_order_acquire) );
@@ -326,7 +325,7 @@ int task_node::remove_back_arc( int output_port, int n ) {
 void task_node::set_next_writer( int output_port, task_node* d ) {
     __OOX_ASSERT( uintptr_t(d)!=1, nullptr );
     task_node* o = out(output_port).next_writer.exchange(d);
-    TRACE("%p set_next_writer(%d, %p): next_writer was %p",this,output_port,d,o);
+    __OOX_TRACE("%p set_next_writer(%d, %p): next_writer was %p",this,output_port,d,o);
     if( o ) {
         if( uintptr_t(o)==1 ) {
             // this has value and conceptual back_arc from its owning oox that was removed.
@@ -341,12 +340,12 @@ void task_node::set_next_writer( int output_port, task_node* d ) {
 
 void task_node::release( int n ) {
     if(life_count.load(std::memory_order_acquire) == n) {
-        TRACE("%p release all: %d",this,n);
+        __OOX_TRACE("%p release all: %d",this,n);
         delete this;
     }
     else {
         int k = life_count-=n;
-        TRACE("%p release: %d",this,k);
+        __OOX_TRACE("%p release: %d",this,k);
         __OOX_ASSERT(k>0,"invalid life_count detected while removing prerequisite");
     }
 }
@@ -401,7 +400,7 @@ struct oox_var_base {
         current_task = t, current_port = 0, storage_ptr = ptr, is_forward = fwd;
         storage_offset = uintptr_t(storage_ptr) - uintptr_t(current_task);
         t->life_count.store(lifetime, std::memory_order_release);
-        TRACE("%p bind: store=%p life=%d fwd=%d",t,ptr,lifetime,fwd);
+        __OOX_TRACE("%p bind: store=%p life=%d fwd=%d",t,ptr,lifetime,fwd);
     }
     void wait() {
         __OOX_ASSERT(current_task, "wait for empty oox_var");
@@ -426,11 +425,11 @@ int task_node::forward_successors( int output_slots, int *count, oox_var_base& n
     arc* r = head.exchange( (arc*)uintptr_t(1) ); // mark it completed
     task_node* d = out(0).next_writer.exchange( (internal::task_node*)uintptr_t(3) ); // finish this node
     int refs = 1;
-    TRACE("%p forward_successors(%p, %d): arcs=%p next_writer=%p",this,n.current_task,n.current_port,r,d);
+    __OOX_TRACE("%p forward_successors(%p, %d): arcs=%p next_writer=%p",this,n.current_task,n.current_port,r,d);
     if( r ) {
         arc* l = n.current_task->head.exchange( r ); // forward dependencies
         if( l ) {
-            TRACE("%p forward_successors(%p, %d): notify arcs myself %p",this,n.current_task,n.current_port,l);
+            __OOX_TRACE("%p forward_successors(%p, %d): notify arcs myself %p",this,n.current_task,n.current_port,l);
             __OOX_ASSERT( uintptr_t(l)==1, "arc lists merge is not implemented" ); // TODO
             __OOX_ASSERT(!n.is_forward, "not implemented"); // TODO
             do_notify_arcs( r, count );
@@ -439,7 +438,7 @@ int task_node::forward_successors( int output_slots, int *count, oox_var_base& n
     if( d ) { // TODO: can be converted as another arc type instead of working with outputs?
         task_node* o = n.current_task->out(n.current_port).next_writer.exchange( d );
         if( o ) { // next node is ready already
-            TRACE("%p forward_successors(%p, %d): removing back arc myself %p",this,n.current_task,n.current_port,o);
+            __OOX_TRACE("%p forward_successors(%p, %d): removing back arc myself %p",this,n.current_task,n.current_port,o);
             __OOX_ASSERT( uintptr_t(o)==1, nullptr );
             __OOX_ASSERT(!n.is_forward, "not implemented"); // TODO
             __OOX_ASSERT(out(0).countdown == count[0], "not implemented"); // TODO?
@@ -481,7 +480,7 @@ class oox_var : public internal::oox_var_base {
 
     void* allocate_new() noexcept {
         auto *v = new internal::storage_task<1, typename std::aligned_storage<sizeof(T), alignof(T)>::type >();
-        TRACE("%p oox_var",v);
+        __OOX_TRACE("%p oox_var",v);
         v->out(0).next_writer.store((internal::task_node*)uintptr_t(1), std::memory_order_release);
         v->head.store((internal::arc*)uintptr_t(1), std::memory_order_release);
         this->bind_to( v, &v->my_precious, 2 );
@@ -570,7 +569,7 @@ struct oox_var_args<types<T, Types...>, C, Args...> : oox_args<types<Types...>, 
 
     int setup( int port, internal::task_node *self, const oox_type& cov, Args&&... args ) {
         int count = is_writer;
-        if( Verbose )
+        if( g_oox_verbose )
             std::cout << self << " arg: " << get_type<C>("oox_var<A>") << "=" << cov.current_task
                 << " as " << get_type<T>("T") << ": is_writer=" << count << std::endl;
         if( !cov.current_task )
@@ -634,7 +633,7 @@ struct functional_task : storage_task<slots, F> {
     using storage_task<slots, F>::storage_task;
     typename std::aligned_storage<sizeof(R), alignof(R)>::type my_result;
     void execute() override {
-        TRACE("%p do_run: start",this);
+        __OOX_TRACE("%p do_run: start",this);
         new(&my_result) R( this->my_precious() );
         task_node::notify_successors<slots>();
     }
@@ -647,7 +646,7 @@ template<int slots, typename F>
 struct functional_task<slots, F, void> : storage_task<slots, F> {
     using storage_task<slots, F>::storage_task;
     void execute() override {
-        TRACE("%p do_run: start",this);
+        __OOX_TRACE("%p do_run: start",this);
         this->my_precious();
         task_node::notify_successors<slots>();
     }
@@ -661,18 +660,18 @@ struct functional_task<slots, F, oox_var<VT> > : storage_task<slots, F> {
 
     void execute() override {
 #if 0
-        TRACE("%p do_run: start forward",this);
+        __OOX_TRACE("%p do_run: start forward",this);
         new(my_result.begin()) oox_var<VT>( this->my_precious() );
         return task_node::forward_successors<slots>( *my_result.begin() );
 #else
-        TRACE("%p do_run: start forward",this);
+        __OOX_TRACE("%p do_run: start forward",this);
         new(&my_result) oox_var<VT>( this->my_precious() );
         this->start_count.store(1, std::memory_order_release);
         arc* j = new arc( this, 0, arc::flow_only ); // TODO: embed into the task
         if( reinterpret_cast<oox_var<VT>*>(&my_result)->current_task->add_arc(j) )
             return;
         else delete j;
-        TRACE("%p do_run: notify forward",this);
+        __OOX_TRACE("%p do_run: notify forward",this);
         task_node::notify_successors<slots>();
 #endif
     }
@@ -738,7 +737,7 @@ auto oox_run(F&& f, Args&&... args)->internal::oox_type<internal::result_type_of
     typedef internal::functional_task<args_type::write_nodes_count, functor_type, r_type> task_type;
 
     task_type *t = new task_type( functor_type(std::forward<F>(f), args_type(std::forward<Args>(args)...)) );
-    TRACE("%p oox_run: write ports %d",t,args_type::write_nodes_count);
+    __OOX_TRACE("%p oox_run: write ports %d",t,args_type::write_nodes_count);
     int protect_count = std::numeric_limits<int>::max();
     t->start_count.store(protect_count, std::memory_order_release);
     // process functor types

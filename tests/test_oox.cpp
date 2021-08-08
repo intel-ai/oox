@@ -7,7 +7,7 @@ bool g_oox_verbose = false;
 #define println(s, ...) printf(s "\n",  __VA_ARGS__)
 #define __OOX_TRACE if (g_oox_verbose) println
 
-#include "oox.h"
+#include <oox/oox.h>
 
 #define REMARK println
 #define ASSERT __OOX_ASSERT_EX

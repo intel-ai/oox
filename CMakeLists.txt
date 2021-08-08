@@ -10,8 +10,12 @@ option(OOX_BUILD_TESTS "Enables builds of tests" ON)
 
 # Turn on the verbose
 set(CMAKE_VERBOSE_MAKEFILE ON)
+
 # Include additional language check
 include(CheckLanguage)
+
+# Adhere to GNU conventions
+include(GNUInstallDirs)
 
 # Enable test
 include(CTest)
@@ -20,7 +24,7 @@ include(CTest)
 find_package(Threads REQUIRED)
 
 add_library(${PROJECT_NAME} INTERFACE)
-target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_17)
+target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_11)
 target_link_libraries(${PROJECT_NAME} INTERFACE Threads::Threads)
 target_include_directories(${PROJECT_NAME} INTERFACE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
@@ -36,11 +40,11 @@ if(OOX_BUILD_BENCHMARKS)
 endif(OOX_BUILD_BENCHMARKS)
 
 # -----------------------------------------------------------------------------
-# create find_package(Taskflow CONFIG)
+# create find_package(OOX CONFIG)
 # -----------------------------------------------------------------------------
 
 # install header
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/taskflow DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/oox DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 # export target
 set_target_properties(${PROJECT_NAME} PROPERTIES EXPORT_NAME ${PROJECT_NAME})

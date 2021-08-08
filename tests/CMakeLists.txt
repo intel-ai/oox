@@ -6,7 +6,6 @@ list(APPEND OOX_UNITTESTS
 
 foreach(unittest IN LISTS OOX_UNITTESTS)
   add_executable(${unittest} ${unittest}.cpp)
-  target_link_libraries(${unittest} ${PROJECT_NAME} tf::default_settings)
-  target_include_directories(${unittest} PRIVATE ${OOX_3RD_PARTY_DIR}/doctest)
-  doctest_discover_tests(${unittest})
+  target_link_libraries(${unittest} ${PROJECT_NAME})
+  target_include_directories(${unittest} PRIVATE ${PROJECT_NAME})
 endforeach()

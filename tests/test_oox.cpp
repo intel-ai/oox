@@ -1,3 +1,5 @@
+#include <gtest/gtest.h>
+
 #include <iostream>
 #include <numeric>
 #include <vector>
@@ -6,11 +8,13 @@
 bool g_oox_verbose = false;
 #define println(s, ...) printf(s "\n",  __VA_ARGS__)
 #define __OOX_TRACE if (g_oox_verbose) println
+//#define __OOX_ASSERT(b, m) ASSERT_TRUE(b) << (m)
+//#define __OOX_ASSERT_EX(b, m) ASSERT_TRUE(b) << (m)
 
 #include <oox/oox.h>
 
 #define REMARK println
-#define ASSERT __OOX_ASSERT_EX
+#define ASSERT(b, m) ASSERT_TRUE(b) << (m)
 
 /////////////////////////////////////// EXAMPLES ////////////////////////////////////////
 
@@ -32,7 +36,7 @@ namespace ArchSample {
     }
 }
 namespace Fib0 {
-    // Concise demonstration
+    // Serial
     int Fib(int n) {
         if(n < 2) return n;
         return Fib(n-1) + Fib(n-2);
@@ -210,42 +214,52 @@ void test() {
 
 int plus(int a, int b) { return a+b; }
 
-int main() {
 
-    if(1) {
-        const oox_var<int> a = oox_run(plus, 2, 3);
-        oox_var<int> b = oox_run(plus, 1, a);
-        REMARK("Simple:\t%d %d\n", oox_wait_and_get(a), oox_wait_and_get(b));
+TEST(OOX, Simple) {
+    const oox_var<int> a = oox_run(plus, 2, 3);
+    oox_var<int> b = oox_run(plus, 1, a);
+    REMARK("Simple:\t%d %d\n", oox_wait_and_get(a), oox_wait_and_get(b));
+}
+TEST(OOX, DISABLED_Empty) { // TODO!
+    oox_var<int> a;
+    oox_var<int> b = oox_run(plus, 1, a);
+    //a = 2;
+    // optional, future, ref?
+    REMARK("Simple:\t%d %d\n", oox_wait_and_get(a), oox_wait_and_get(b));
+}
+TEST(OOX, Arch) {
+    int arch = ArchSample::test();
+    REMARK("Sample:\t%d\n", arch);
+}
+TEST(OOX, Fib) {
+    int x = 20;
+    int fib0 = Fib0::Fib(x);
+    int fib1 = oox_wait_and_get(Fib1::Fib(x));
+    int fib2 = oox_wait_and_get(Fib2::Fib(x));
+    REMARK("Fib:\t%d %d %d\n", fib0, fib1, fib2);
+    ASSERT(fib0 == fib1 && fib1 == fib2, "");
+}
+TEST(OOX, FS) {
+    int files0 = Filesystem::Serial::disk_usage(Filesystem::tree[0]);
+    int files1 = oox_wait_and_get(Filesystem::Simple::disk_usage(Filesystem::tree[0]));
+    //int files2 = oox_wait_and_get(Filesystem::AntiDependence::disk_usage(Filesystem::tree[0]));
+    REMARK("Files:\t%d %d\n", files0, files1);
+    //REMARK("Files:\t%d %d %d\n", files0, files1, files2);
+    //ASSERT(files0 == files1 && files1 == files2, "");
+}
+TEST(OOX, Wavefront) {
+    Wavefront_LCS::test();
+}
+
+
+int main(int argc, char** argv) {
+    testing::InitGoogleTest(&argc, argv);
+
+    int err{0};
+    try {
+        err = RUN_ALL_TESTS();
+    } catch (const std::exception& e) {
+        REMARK("Error: %s", e.what());
     }
-    if(0) {
-        oox_var<int> a;
-        oox_var<int> b = oox_run(plus, 1, a);
-        //a = 2;
-        // optional, future, ref?
-        REMARK("Simple:\t%d %d\n", oox_wait_and_get(a), oox_wait_and_get(b));
-    }
-    if(1) {
-        int arch = ArchSample::test();
-        REMARK("Sample:\t%d\n", arch);
-    }
-    if(1) {
-        int x = 20;
-        int fib0 = Fib0::Fib(x);
-        int fib1 = oox_wait_and_get(Fib1::Fib(x));
-        int fib2 = oox_wait_and_get(Fib2::Fib(x));
-        REMARK("Fib:\t%d %d %d\n", fib0, fib1, fib2);
-        ASSERT(fib0 == fib1 && fib1 == fib2, "");
-    }
-    if(1) {
-        int files0 = Filesystem::Serial::disk_usage(Filesystem::tree[0]);
-        int files1 = oox_wait_and_get(Filesystem::Simple::disk_usage(Filesystem::tree[0]));
-        //int files2 = oox_wait_and_get(Filesystem::AntiDependence::disk_usage(Filesystem::tree[0]));
-        REMARK("Files:\t%d %d\n", files0, files1);
-        //REMARK("Files:\t%d %d %d\n", files0, files1, files2);
-        //ASSERT(files0 == files1 && files1 == files2, "");
-    }
-    if(1)
-        Wavefront_LCS::test();
-    printf("done\n");
-    return 0;
+    return err;
 }

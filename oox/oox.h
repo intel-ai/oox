@@ -180,7 +180,7 @@ struct task_node : public arc_list {
 };
 
 bool arc_list::add_arc( arc* i ) {
-    __OOX_ASSERT( uintptr_t(i->node)>2, nullptr );
+    __OOX_ASSERT( uintptr_t(i->node)>2, "" );
     for(;;) {
         arc* j = head.load(std::memory_order_acquire);
         if( j==(arc*)uintptr_t(1) )
@@ -193,7 +193,7 @@ bool arc_list::add_arc( arc* i ) {
 
 int task_node::assign_prerequisite( task_node *n, int req_port ) {
     arc* j = new arc( this, req_port ); // TODO: embed into the task
-    __OOX_ASSERT_EX(j && n, nullptr);
+    __OOX_ASSERT_EX(j && n, "");
     if( n->add_arc(j) ) {
         __OOX_TRACE("%p assign_prerequisite: assigned to %p, %d",this,n,req_port);
         return 1; // Prerequisite n will decrement start_count when it produces a value
@@ -205,7 +205,7 @@ int task_node::assign_prerequisite( task_node *n, int req_port ) {
         j->node = n;
         j->kind = arc::back_only;
         bool success = add_arc(j); //TODO: add_arc_unsafe?
-        __OOX_ASSERT_EX(success,nullptr);
+        __OOX_ASSERT_EX(success, "");
     }
     return 0;
 }
@@ -276,7 +276,7 @@ int task_node::notify_successors( int output_slots, int *count ) {
     int refs = 0;
     for( int i = 0; i <  output_slots; i++ )
         refs += do_notify_out( i, count[i] );
-    __OOX_ASSERT(refs>=0, nullptr);
+    __OOX_ASSERT(refs>=0, "");
     waiter.set_value();
     return refs;
 }
@@ -323,7 +323,7 @@ int task_node::remove_back_arc( int output_port, int n ) {
 }
 
 void task_node::set_next_writer( int output_port, task_node* d ) {
-    __OOX_ASSERT( uintptr_t(d)!=1, nullptr );
+    __OOX_ASSERT( uintptr_t(d)!=1, "" );
     task_node* o = out(output_port).next_writer.exchange(d);
     __OOX_TRACE("%p set_next_writer(%d, %p): next_writer was %p",this,output_port,d,o);
     if( o ) {
@@ -332,7 +332,7 @@ void task_node::set_next_writer( int output_port, task_node* d ) {
             if( int k = remove_back_arc( output_port ) ) // TODO: optimize it for set_next_writer without contention
                 release( k );
         } else {
-            __OOX_ASSERT( uintptr_t(o)==3, nullptr );
+            __OOX_ASSERT( uintptr_t(o)==3, "" );
             __OOX_ASSERT( uintptr_t(d)==3, "TODO forward_successors" ); // TODO
         }
     }
@@ -403,7 +403,7 @@ struct oox_var_base {
         __OOX_TRACE("%p bind: store=%p life=%d fwd=%d",t,ptr,lifetime,fwd);
     }
     void wait() {
-        __OOX_ASSERT(current_task, "wait for empty oox_var");
+        __OOX_ASSERT_EX(current_task, "wait for empty oox_var");
         current_task->waiter.get_future().wait();
     }
     void release() {
@@ -439,7 +439,7 @@ int task_node::forward_successors( int output_slots, int *count, oox_var_base& n
         task_node* o = n.current_task->out(n.current_port).next_writer.exchange( d );
         if( o ) { // next node is ready already
             __OOX_TRACE("%p forward_successors(%p, %d): removing back arc myself %p",this,n.current_task,n.current_port,o);
-            __OOX_ASSERT( uintptr_t(o)==1, nullptr );
+            __OOX_ASSERT( uintptr_t(o)==1, "" );
             __OOX_ASSERT(!n.is_forward, "not implemented"); // TODO
             __OOX_ASSERT(out(0).countdown == count[0], "not implemented"); // TODO?
             notify_next_writer( d );
@@ -449,7 +449,7 @@ int task_node::forward_successors( int output_slots, int *count, oox_var_base& n
     // now we have next writer to be processed here
     for( int i = 1; i <  output_slots; i++ )
         refs += do_notify_out( i, count[i] );
-    __OOX_ASSERT(refs>=0, nullptr);
+    __OOX_ASSERT(refs>=0, "");
     return refs;
 }
 
@@ -495,7 +495,7 @@ public:
     oox_var& operator=(oox_var<T>&& t) {
         release();
         new(this) internal::oox_var_base(std::move(t));
-        __OOX_ASSERT_EX(current_task, nullptr);
+        __OOX_ASSERT_EX(current_task, "");
         t.current_task = nullptr;
         return *this;
     }
@@ -548,7 +548,7 @@ struct oox_args<types<T, Types...>, A, Args...> : oox_args<types<Types...>, Args
     typename std::decay<A>::type&& consume() { return std::move(my_value); }
     static constexpr int write_nodes_count = base_type::write_nodes_count;
     int setup( int port, internal::task_node *self, A&& a, Args&&... args ) {
-        //__OOX_ASSERT(my_value == a, nullptr);
+        //__OOX_ASSERT(my_value == a, "");
         return base_type::setup( port, self, std::forward<Args>(args)...);
     }
 };
@@ -569,9 +569,7 @@ struct oox_var_args<types<T, Types...>, C, Args...> : oox_args<types<Types...>, 
 
     int setup( int port, internal::task_node *self, const oox_type& cov, Args&&... args ) {
         int count = is_writer;
-        if( g_oox_verbose )
-            std::cout << self << " arg: " << get_type<C>("oox_var<A>") << "=" << cov.current_task
-                << " as " << get_type<T>("T") << ": is_writer=" << count << std::endl;
+        __OOX_TRACE("%p arg: %s=%p as %s: is_writer=%d", self, get_type<C>("oox_var<A>").c_str(), cov.current_task, get_type<T>("T").c_str(), count);
         if( !cov.current_task )
             new( &const_cast<oox_type&>(cov) ) oox_type(ooxed_type()); // allocate oox container with default value
         if( count ) {
@@ -758,4 +756,4 @@ T oox_wait_and_get(oox_var<T> &ov) { oox_wait_for_all(ov); return *(T*)ov.storag
 template<typename T>
 T oox_wait_and_get(const oox_var<T> &ov) { oox_wait_for_all(const_cast<oox_var<T>&>(ov)); return *(T*)ov.storage_ptr; }
 
-#endif
+#endif // !OOX_SERIAL

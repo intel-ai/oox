@@ -5,7 +5,7 @@ MESSAGE(STATUS "CMAKE_ROOT=" ${CMAKE_ROOT})
 project(OOX VERSION 0.2.0 LANGUAGES CXX)
 
 # build options
-option(OOX_BUILD_BENCHMARKS "Enables builds of benchmarks" OFF)
+option(OOX_BUILD_BENCHMARKS "Enables builds of benchmarks" ON)
 option(OOX_BUILD_TESTS "Enables builds of tests" ON)
 
 # Turn on the verbose

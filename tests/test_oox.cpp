@@ -205,11 +205,6 @@ void LCS( const char* x, size_t xlen, const char* y, size_t ylen ) {
 }}
 #endif
 
-void test() {
-    int lcs0 = Serial::LCS(input1, sizeof(input1), input2, sizeof(input2));
-    int lcs1 = Straight::LCS(input1, sizeof(input1), input2, sizeof(input2));
-    REMARK("LCS:\t%d %d\n", lcs0, lcs1);
-}
 }//namespace Wavefront_LCS
 
 int plus(int a, int b) { return a+b; }
@@ -218,39 +213,39 @@ int plus(int a, int b) { return a+b; }
 TEST(OOX, Simple) {
     const oox_var<int> a = oox_run(plus, 2, 3);
     oox_var<int> b = oox_run(plus, 1, a);
-    REMARK("Simple:\t%d %d\n", oox_wait_and_get(a), oox_wait_and_get(b));
+    ASSERT_EQ(oox_wait_and_get(a), 5);
+    ASSERT_EQ(oox_wait_and_get(b), 6);
 }
 TEST(OOX, DISABLED_Empty) { // TODO!
     oox_var<int> a;
     oox_var<int> b = oox_run(plus, 1, a);
     //a = 2;
     // optional, future, ref?
-    REMARK("Simple:\t%d %d\n", oox_wait_and_get(a), oox_wait_and_get(b));
+    ASSERT_EQ(oox_wait_and_get(a), 0);
+    ASSERT_EQ(oox_wait_and_get(b), 1);
 }
 TEST(OOX, Arch) {
     int arch = ArchSample::test();
-    REMARK("Sample:\t%d\n", arch);
+    ASSERT_EQ(arch, 3);
 }
 TEST(OOX, Fib) {
     int x = 20;
     int fib0 = Fib0::Fib(x);
     int fib1 = oox_wait_and_get(Fib1::Fib(x));
     int fib2 = oox_wait_and_get(Fib2::Fib(x));
-    REMARK("Fib:\t%d %d %d\n", fib0, fib1, fib2);
-    ASSERT(fib0 == fib1 && fib1 == fib2, "");
+    ASSERT_TRUE(fib0 == fib1 && fib1 == fib2);
 }
 TEST(OOX, FS) {
     int files0 = Filesystem::Serial::disk_usage(Filesystem::tree[0]);
     int files1 = oox_wait_and_get(Filesystem::Simple::disk_usage(Filesystem::tree[0]));
-    //int files2 = oox_wait_and_get(Filesystem::AntiDependence::disk_usage(Filesystem::tree[0]));
-    REMARK("Files:\t%d %d\n", files0, files1);
-    //REMARK("Files:\t%d %d %d\n", files0, files1, files2);
-    //ASSERT(files0 == files1 && files1 == files2, "");
+    ASSERT_EQ(files0, files1);
 }
 TEST(OOX, Wavefront) {
-    Wavefront_LCS::test();
+    using namespace Wavefront_LCS;
+    int lcs0 = Serial::LCS(input1, sizeof(input1), input2, sizeof(input2));
+    int lcs1 = Straight::LCS(input1, sizeof(input1), input2, sizeof(input2));
+    REMARK("LCS:\t%d %d\n", lcs0, lcs1);
 }
-
 
 int main(int argc, char** argv) {
     testing::InitGoogleTest(&argc, argv);

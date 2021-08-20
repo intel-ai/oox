@@ -229,7 +229,7 @@ TEST(OOX, Arch) {
     ASSERT_EQ(arch, 3);
 }
 TEST(OOX, Fib) {
-    int x = 20;
+    int x = 5;
     int fib0 = Fib0::Fib(x);
     int fib1 = oox_wait_and_get(Fib1::Fib(x));
     int fib2 = oox_wait_and_get(Fib2::Fib(x));

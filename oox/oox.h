@@ -5,6 +5,9 @@
 #include <atomic>
 #include <future>
 
+#include <oneapi/tbb/detail/_task.h>
+#include <oneapi/tbb/task_group.h>
+
 #ifndef OOX_SERIAL
 #define OOX_SERIAL 0
 #endif
@@ -133,15 +136,24 @@ struct arc_list {
     arc_list() { head.store(nullptr, std::memory_order_relaxed); }
 };
 
-struct task_node : public arc_list {
+using tbb::detail::d1::wait_context;
+using tbb::detail::d1::task;
+using tbb::detail::d1::execution_data;
+static tbb::task_group_context tbb_context;
+
+struct task_node : public arc_list, public tbb::detail::d1::task {
     // Prerequisites to start the task
     std::atomic<int> start_count;
     // Pointers to this structure and live output nodes
     std::atomic<int> life_count;
     // TODO: exception storage here?
-    std::promise<void> waiter;
+    //std::promise<void> waiter;
+    wait_context waiter{1};
 
-    virtual void execute() = 0;
+    virtual task* execute(execution_data&) = 0;
+    virtual task* cancel(execution_data& ed) override {
+      __OOX_ASSERT(false, nullptr);
+    }
 
     task_node() { } // prepare the task for waiting on it directly
     virtual ~task_node() {}
@@ -277,7 +289,8 @@ int task_node::notify_successors( int output_slots, int *count ) {
     for( int i = 0; i <  output_slots; i++ )
         refs += do_notify_out( i, count[i] );
     __OOX_ASSERT(refs>=0, "");
-    waiter.set_value();
+    // waiter.set_value();
+    waiter.release();
     return refs;
 }
 
@@ -290,7 +303,9 @@ void task_node::remove_prerequisite( int n ) {
             t.set_affinity(affinity);
 #endif /* OOX_AFFINITY */
         __OOX_TRACE("%p remove_prerequisite: spawning",this);
-        auto f = std::async(std::launch::async, &task_node::execute, this);  //tbb::task::spawn( *this );
+        // auto f = std::async(std::launch::async, &task_node::execute, this);  //tbb::task::spawn( *this );
+        // tbb::detail::d1::small_object_allocator allocator{};
+        tbb::detail::r1::spawn(*this, tbb_context);
     }
 }
 
@@ -374,7 +389,7 @@ output_node& task_node::out(int n) const {
 template<int slots, typename T>
 struct storage_task : task_node_slots<slots> {
     T my_precious;
-    void execute() { __OOX_ASSERT(false, "not runnable"); }
+    task* execute(execution_data&) { __OOX_ASSERT(false, "not runnable"); return nullptr; }
     storage_task() = default;
     storage_task(T&& t) : my_precious(std::move(t)) {}
     storage_task(const T& t) : my_precious(t) {}
@@ -404,7 +419,8 @@ struct oox_var_base {
     }
     void wait() {
         __OOX_ASSERT_EX(current_task, "wait for empty oox_var");
-        current_task->waiter.get_future().wait();
+        // current_task->waiter.get_future().wait();
+        tbb::detail::d1::wait(current_task->waiter, tbb_context);
     }
     void release() {
         if( current_task ) {
@@ -630,10 +646,11 @@ template<int slots, typename F, typename R>
 struct functional_task : storage_task<slots, F> {
     using storage_task<slots, F>::storage_task;
     typename std::aligned_storage<sizeof(R), alignof(R)>::type my_result;
-    void execute() override {
+    task* execute(execution_data&) override {
         __OOX_TRACE("%p do_run: start",this);
         new(&my_result) R( this->my_precious() );
         task_node::notify_successors<slots>();
+        return nullptr;
     }
     ~functional_task() {
         reinterpret_cast<R*>(&my_result)->~R(); // TODO: what if it was canceled?
@@ -643,10 +660,11 @@ struct functional_task : storage_task<slots, F> {
 template<int slots, typename F>
 struct functional_task<slots, F, void> : storage_task<slots, F> {
     using storage_task<slots, F>::storage_task;
-    void execute() override {
+    task* execute(execution_data&) override {
         __OOX_TRACE("%p do_run: start",this);
         this->my_precious();
         task_node::notify_successors<slots>();
+        return nullptr;
     }
 };
 
@@ -656,7 +674,7 @@ struct functional_task<slots, F, oox_var<VT> > : storage_task<slots, F> {
     using storage_task<slots, F>::storage_task;
     typename std::aligned_storage< sizeof(oox_var<VT>), alignof(oox_var<VT>) >::type my_result;
 
-    void execute() override {
+    task* execute(execution_data&) override {
 #if 0
         __OOX_TRACE("%p do_run: start forward",this);
         new(my_result.begin()) oox_var<VT>( this->my_precious() );
@@ -667,10 +685,11 @@ struct functional_task<slots, F, oox_var<VT> > : storage_task<slots, F> {
         this->start_count.store(1, std::memory_order_release);
         arc* j = new arc( this, 0, arc::flow_only ); // TODO: embed into the task
         if( reinterpret_cast<oox_var<VT>*>(&my_result)->current_task->add_arc(j) )
-            return;
+            return nullptr;
         else delete j;
         __OOX_TRACE("%p do_run: notify forward",this);
         task_node::notify_successors<slots>();
+        return nullptr;
 #endif
     }
     ~functional_task() {

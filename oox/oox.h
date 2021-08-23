@@ -3,10 +3,13 @@
 #include <type_traits>
 #include <limits>
 #include <atomic>
-#include <future>
 
+#if HAVE_TBB
 #include <oneapi/tbb/detail/_task.h>
 #include <oneapi/tbb/task_group.h>
+#else
+#include <future>
+#endif
 
 #ifndef OOX_SERIAL
 #define OOX_SERIAL 0
@@ -91,6 +94,74 @@ void oox_wait_for_all(oox_node &) {}
 
 namespace internal {
 
+#if HAVE_TBB
+using tbb::detail::d1::execution_data;
+using tbb_task = tbb::detail::d1::task;
+using tbb::detail::d1::small_object_allocator;
+static tbb::task_group_context tbb_context;
+#define TASK_EXECUTE_METHOD tbb_task* execute(execution_data&) override
+
+struct task : public tbb_task {
+    tbb::detail::d1::wait_context waiter{1};
+    small_object_allocator alloc{};
+
+    virtual ~task() {}
+
+    TASK_EXECUTE_METHOD {
+        __OOX_ASSERT(false, "");
+    }
+    virtual tbb_task* cancel(execution_data& ed) override {
+        __OOX_ASSERT(false, "");
+    }
+    void destroy() {
+        alloc.delete_object(this);
+    }
+    template<typename T, typename... Args>
+    static T* allocate(Args && ... args) {
+        small_object_allocator a{};
+        auto *t = a.new_object<T>(std::forward<Args>(args)...);
+        t->alloc = a; // store deallocation info
+        return t;
+    }
+    void spawn() {
+        tbb::detail::d1::spawn(*this, tbb_context);
+    }
+    void wait() {
+        tbb::detail::d1::wait(waiter, tbb_context);
+    }
+    void wakeup() {
+        waiter.release();
+    }
+};
+#else // HAVE_TBB
+#define TASK_EXECUTE_METHOD void* execute() override
+
+struct task {
+    std::promise<void> waiter;
+
+    virtual ~task() {}
+    virtual void* execute() = 0;
+
+    void destroy() {
+        delete this;
+    }
+
+    template<typename T, typename... Args>
+    static T* allocate(Args && ... args) {
+        return new T(std::forward<Args>(args)...);
+    }
+    void spawn() {
+        std::async(std::launch::async, &task::execute, this);
+    }
+    void wait() {
+        waiter.get_future().wait();
+    }
+    void wakeup() {
+        waiter.set_value();
+    }
+};
+#endif // HAVE_TBB
+
 struct task_node;
 struct oox_var_base;
 
@@ -134,37 +205,6 @@ struct arc_list {
     // Return true if success, false otherwise.
     bool add_arc( arc* i );
     arc_list() { head.store(nullptr, std::memory_order_relaxed); }
-};
-
-using tbb::detail::d1::wait_context;
-using tbb::detail::d1::execution_data;
-using tbb_task = tbb::detail::d1::task;
-using tbb::detail::d1::small_object_allocator;
-static tbb::task_group_context tbb_context;
-
-struct task : public tbb_task {
-    //std::promise<void> waiter;
-    wait_context waiter{1};
-    small_object_allocator alloc{};
-
-    virtual ~task() {}
-
-    virtual tbb_task* execute(execution_data&) override {
-        __OOX_ASSERT(false, "");
-    }
-    virtual tbb_task* cancel(execution_data& ed) override {
-        __OOX_ASSERT(false, "");
-    }
-    void destroy() {
-        alloc.delete_object(this);
-    }
-    template<typename T, typename... Args>
-    static T* allocate(Args && ... args) {
-        small_object_allocator a{};
-        auto *t = a.new_object<T>(std::forward<Args>(args)...);
-        t->alloc = a; // store deallocation info
-        return t;
-    }
 };
 
 struct task_node : public task, arc_list {
@@ -308,8 +348,7 @@ int task_node::notify_successors( int output_slots, int *count ) {
     for( int i = 0; i <  output_slots; i++ )
         refs += do_notify_out( i, count[i] );
     __OOX_ASSERT(refs>=0, "");
-    // waiter.set_value();
-    waiter.release();
+    wakeup();
     return refs;
 }
 
@@ -322,9 +361,7 @@ void task_node::remove_prerequisite( int n ) {
             t.set_affinity(affinity);
 #endif /* OOX_AFFINITY */
         __OOX_TRACE("%p remove_prerequisite: spawning",this);
-        // auto f = std::async(std::launch::async, &task_node::execute, this);  //tbb::task::spawn( *this );
-        // tbb::detail::d1::small_object_allocator allocator{};
-        tbb::detail::r1::spawn(*this, tbb_context);
+        spawn();
     }
 }
 
@@ -408,7 +445,7 @@ output_node& task_node::out(int n) const {
 template<int slots, typename T>
 struct alignas(64) storage_task : task_node_slots<slots> {
     T my_precious;
-    tbb_task* execute(execution_data&) { __OOX_ASSERT(false, "not runnable"); return nullptr; }
+    TASK_EXECUTE_METHOD { __OOX_ASSERT(false, "not runnable"); return nullptr; }
     storage_task() = default;
     storage_task(T&& t) : my_precious(std::move(t)) {}
     storage_task(const T& t) : my_precious(t) {}
@@ -438,8 +475,7 @@ struct oox_var_base {
     }
     void wait() {
         __OOX_ASSERT_EX(current_task, "wait for empty oox_var");
-        // current_task->waiter.get_future().wait();
-        tbb::detail::d1::wait(current_task->waiter, tbb_context);
+        current_task->wait();
     }
     void release() {
         if( current_task ) {
@@ -665,7 +701,7 @@ template<int slots, typename F, typename R>
 struct alignas(64) functional_task : storage_task<slots, F> {
     using storage_task<slots, F>::storage_task;
     typename std::aligned_storage<sizeof(R), alignof(R)>::type my_result;
-    tbb_task* execute(execution_data&) override {
+    TASK_EXECUTE_METHOD {
         __OOX_TRACE("%p do_run: start",this);
         new(&my_result) R( this->my_precious() );
         task_node::notify_successors<slots>();
@@ -679,7 +715,7 @@ struct alignas(64) functional_task : storage_task<slots, F> {
 template<int slots, typename F>
 struct functional_task<slots, F, void> : storage_task<slots, F> {
     using storage_task<slots, F>::storage_task;
-    tbb_task* execute(execution_data&) override {
+    TASK_EXECUTE_METHOD {
         __OOX_TRACE("%p do_run: start",this);
         this->my_precious();
         task_node::notify_successors<slots>();
@@ -693,7 +729,7 @@ struct functional_task<slots, F, oox_var<VT> > : storage_task<slots, F> {
     using storage_task<slots, F>::storage_task;
     typename std::aligned_storage< sizeof(oox_var<VT>), alignof(oox_var<VT>) >::type my_result;
 
-    tbb_task* execute(execution_data&) override {
+    TASK_EXECUTE_METHOD {
 #if 0
         __OOX_TRACE("%p do_run: start forward",this);
         new(my_result.begin()) oox_var<VT>( this->my_precious() );
@@ -793,5 +829,7 @@ template<typename T>
 T oox_wait_and_get(oox_var<T> &ov) { oox_wait_for_all(ov); return *(T*)ov.storage_ptr; }
 template<typename T>
 T oox_wait_and_get(const oox_var<T> &ov) { oox_wait_for_all(const_cast<oox_var<T>&>(ov)); return *(T*)ov.storage_ptr; }
+
+#undef TASK_EXECUTE_METHOD
 
 #endif // !OOX_SERIAL

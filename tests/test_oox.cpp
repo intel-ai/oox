@@ -209,6 +209,11 @@ void LCS( const char* x, size_t xlen, const char* y, size_t ylen ) {
 
 int plus(int a, int b) { return a+b; }
 
+#if HAVE_TBB
+#define OOX OOX_TBB
+#else
+#define OOX OOX_STD
+#endif
 
 TEST(OOX, Simple) {
     const oox_var<int> a = oox_run(plus, 2, 3);
@@ -229,7 +234,7 @@ TEST(OOX, Arch) {
     ASSERT_EQ(arch, 3);
 }
 TEST(OOX, Fib) {
-    int x = 5;
+    int x = 20;
     int fib0 = Fib0::Fib(x);
     int fib1 = oox_wait_and_get(Fib1::Fib(x));
     int fib2 = oox_wait_and_get(Fib2::Fib(x));
@@ -244,7 +249,7 @@ TEST(OOX, Wavefront) {
     using namespace Wavefront_LCS;
     int lcs0 = Serial::LCS(input1, sizeof(input1), input2, sizeof(input2));
     int lcs1 = Straight::LCS(input1, sizeof(input1), input2, sizeof(input2));
-    REMARK("LCS:\t%d %d\n", lcs0, lcs1);
+    ASSERT_EQ(lcs0, lcs1);
 }
 
 int main(int argc, char** argv) {

@@ -8,8 +8,15 @@ project(OOX VERSION 0.2.0 LANGUAGES CXX)
 option(OOX_BUILD_BENCHMARKS "Enables builds of benchmarks" ON)
 option(OOX_BUILD_TESTS "Enables builds of tests" ON)
 
+# Global features
+if(OOX_SANITIZE)
+  add_compile_options(-fsanitize=${OOX_SANITIZE} -g -O1)
+  add_link_options(-fsanitize=${OOX_SANITIZE} -g -O1)
+  MESSAGE(STATUS "Building with -fsanitize=" ${OOX_SANITIZE})
+endif()
+
 # Turn on the verbose
-set(CMAKE_VERBOSE_MAKEFILE ON)
+#set(CMAKE_VERBOSE_MAKEFILE ON)
 
 # Include additional language check
 include(CheckLanguage)
@@ -23,6 +30,7 @@ include(CTest)
 # Find pthread package
 find_package(Threads REQUIRED)
 
+# Library
 add_library(${PROJECT_NAME} INTERFACE)
 target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_11)
 target_link_libraries(${PROJECT_NAME} INTERFACE Threads::Threads)

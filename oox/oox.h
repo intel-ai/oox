@@ -137,23 +137,42 @@ struct arc_list {
 };
 
 using tbb::detail::d1::wait_context;
-using tbb::detail::d1::task;
 using tbb::detail::d1::execution_data;
+using tbb_task = tbb::detail::d1::task;
+using tbb::detail::d1::small_object_allocator;
 static tbb::task_group_context tbb_context;
 
-struct task_node : public arc_list, public tbb::detail::d1::task {
+struct task : public tbb_task {
+    //std::promise<void> waiter;
+    wait_context waiter{1};
+    small_object_allocator alloc{};
+
+    virtual ~task() {}
+
+    virtual tbb_task* execute(execution_data&) override {
+        __OOX_ASSERT(false, "");
+    }
+    virtual tbb_task* cancel(execution_data& ed) override {
+        __OOX_ASSERT(false, "");
+    }
+    void destroy() {
+        alloc.delete_object(this);
+    }
+    template<typename T, typename... Args>
+    static T* allocate(Args && ... args) {
+        small_object_allocator a{};
+        auto *t = a.new_object<T>(std::forward<Args>(args)...);
+        t->alloc = a; // store deallocation info
+        return t;
+    }
+};
+
+struct task_node : public task, arc_list {
     // Prerequisites to start the task
     std::atomic<int> start_count;
     // Pointers to this structure and live output nodes
     std::atomic<int> life_count;
     // TODO: exception storage here?
-    //std::promise<void> waiter;
-    wait_context waiter{1};
-
-    virtual task* execute(execution_data&) = 0;
-    virtual task* cancel(execution_data& ed) override {
-      __OOX_ASSERT(false, nullptr);
-    }
 
     task_node() { } // prepare the task for waiting on it directly
     virtual ~task_node() {}
@@ -355,13 +374,13 @@ void task_node::set_next_writer( int output_port, task_node* d ) {
 
 void task_node::release( int n ) {
     if(life_count.load(std::memory_order_acquire) == n) {
-        __OOX_TRACE("%p release all: %d",this,n);
-        delete this;
+        __OOX_TRACE("%p release all: %d", this, n);
+        this->destroy();
     }
     else {
         int k = life_count-=n;
-        __OOX_TRACE("%p release: %d",this,k);
-        __OOX_ASSERT(k>0,"invalid life_count detected while removing prerequisite");
+        __OOX_TRACE("%p release: %d", this, k);
+        __OOX_ASSERT(k > 0, "invalid life_count detected while removing prerequisite");
     }
 }
 
@@ -387,9 +406,9 @@ output_node& task_node::out(int n) const {
 }
 
 template<int slots, typename T>
-struct storage_task : task_node_slots<slots> {
+struct alignas(64) storage_task : task_node_slots<slots> {
     T my_precious;
-    task* execute(execution_data&) { __OOX_ASSERT(false, "not runnable"); return nullptr; }
+    tbb_task* execute(execution_data&) { __OOX_ASSERT(false, "not runnable"); return nullptr; }
     storage_task() = default;
     storage_task(T&& t) : my_precious(std::move(t)) {}
     storage_task(const T& t) : my_precious(t) {}
@@ -495,7 +514,7 @@ class oox_var : public internal::oox_var_base {
                   "for const types use shared_ptr<T>.");
 
     void* allocate_new() noexcept {
-        auto *v = new internal::storage_task<1, typename std::aligned_storage<sizeof(T), alignof(T)>::type >();
+        auto *v = internal::task::allocate<internal::storage_task<1, typename std::aligned_storage<sizeof(T), alignof(T)>::type >>();
         __OOX_TRACE("%p oox_var",v);
         v->out(0).next_writer.store((internal::task_node*)uintptr_t(1), std::memory_order_release);
         v->head.store((internal::arc*)uintptr_t(1), std::memory_order_release);
@@ -525,7 +544,7 @@ public:
     oox_var() {}
     template<typename D>
     oox_var(oox_var<D>&& src) : internal::oox_var_base(src) {
-        (uintptr_t(src.storage_ptr)-src.storage_offset)->release();
+        ((internal::task_node*)(uintptr_t(src.storage_ptr)-src.storage_offset))->release();
         src.current_task = nullptr;
     }
 };
@@ -643,10 +662,10 @@ struct oox_bind {
 };
 
 template<int slots, typename F, typename R>
-struct functional_task : storage_task<slots, F> {
+struct alignas(64) functional_task : storage_task<slots, F> {
     using storage_task<slots, F>::storage_task;
     typename std::aligned_storage<sizeof(R), alignof(R)>::type my_result;
-    task* execute(execution_data&) override {
+    tbb_task* execute(execution_data&) override {
         __OOX_TRACE("%p do_run: start",this);
         new(&my_result) R( this->my_precious() );
         task_node::notify_successors<slots>();
@@ -660,7 +679,7 @@ struct functional_task : storage_task<slots, F> {
 template<int slots, typename F>
 struct functional_task<slots, F, void> : storage_task<slots, F> {
     using storage_task<slots, F>::storage_task;
-    task* execute(execution_data&) override {
+    tbb_task* execute(execution_data&) override {
         __OOX_TRACE("%p do_run: start",this);
         this->my_precious();
         task_node::notify_successors<slots>();
@@ -674,7 +693,7 @@ struct functional_task<slots, F, oox_var<VT> > : storage_task<slots, F> {
     using storage_task<slots, F>::storage_task;
     typename std::aligned_storage< sizeof(oox_var<VT>), alignof(oox_var<VT>) >::type my_result;
 
-    task* execute(execution_data&) override {
+    tbb_task* execute(execution_data&) override {
 #if 0
         __OOX_TRACE("%p do_run: start forward",this);
         new(my_result.begin()) oox_var<VT>( this->my_precious() );
@@ -753,7 +772,7 @@ auto oox_run(F&& f, Args&&... args)->internal::oox_type<internal::result_type_of
     typedef internal::oox_bind<F, args_type>           functor_type;
     typedef internal::functional_task<args_type::write_nodes_count, functor_type, r_type> task_type;
 
-    task_type *t = new task_type( functor_type(std::forward<F>(f), args_type(std::forward<Args>(args)...)) );
+    task_type *t = internal::task::allocate<task_type>( functor_type(std::forward<F>(f), args_type(std::forward<Args>(args)...)) );
     __OOX_TRACE("%p oox_run: write ports %d",t,args_type::write_nodes_count);
     int protect_count = std::numeric_limits<int>::max();
     t->start_count.store(protect_count, std::memory_order_release);

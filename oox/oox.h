@@ -102,7 +102,7 @@ static tbb::task_group_context tbb_context;
 #define TASK_EXECUTE_METHOD tbb_task* execute(execution_data&) override
 
 struct task : public tbb_task {
-    tbb::detail::d1::wait_context waiter{1};
+    tbb::detail::d1::wait_context waiter{0};
     small_object_allocator alloc{};
 
     virtual ~task() {}
@@ -124,6 +124,7 @@ struct task : public tbb_task {
         return t;
     }
     void spawn() {
+        waiter.reserve(1);
         tbb::detail::d1::spawn(*this, tbb_context);
     }
     void wait() {
@@ -417,7 +418,9 @@ void task_node::release( int n ) {
     else {
         int k = life_count-=n;
         __OOX_TRACE("%p release: %d", this, k);
-        __OOX_ASSERT(k > 0, "invalid life_count detected while removing prerequisite");
+        __OOX_ASSERT(k >= 0, "invalid life_count detected while removing prerequisite");
+        if(k == 0)          // double-check after atomic
+            this->destroy();
     }
 }
 

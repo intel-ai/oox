@@ -102,10 +102,17 @@ static tbb::task_group_context tbb_context;
 #define TASK_EXECUTE_METHOD tbb_task* execute(execution_data&) override
 
 struct task : public tbb_task {
-    tbb::detail::d1::wait_context waiter{0};
+    tbb::detail::d1::wait_context waiter{1};
     small_object_allocator alloc{};
-
+#if TBB_USE_ASSERT
+    bool is_spawned{false};
+    virtual ~task() {
+        if(!is_spawned)
+            waiter.release();
+    }
+#else
     virtual ~task() {}
+#endif
 
     TASK_EXECUTE_METHOD {
         __OOX_ASSERT(false, "");
@@ -124,7 +131,9 @@ struct task : public tbb_task {
         return t;
     }
     void spawn() {
-        waiter.reserve(1);
+#if TBB_USE_ASSERT
+        is_spawned = true;
+#endif
         tbb::detail::d1::spawn(*this, tbb_context);
     }
     void wait() {

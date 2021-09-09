@@ -6,10 +6,10 @@
 //#include <tbb/concurrent_vector.h>
 
 bool g_oox_verbose = false;
-#define println(s, ...) printf(s "\n",  __VA_ARGS__)
+#define println(s, ...) fprintf(stderr, s "\n",  __VA_ARGS__)
 #define __OOX_TRACE if (g_oox_verbose) println
-//#define __OOX_ASSERT(b, m) ASSERT_TRUE(b) << (m)
-//#define __OOX_ASSERT_EX(b, m) ASSERT_TRUE(b) << (m)
+#define __OOX_ASSERT(b, m) if(!(b)) { println("OOX assertion failed: " #b " at line %d: %s", __LINE__, m); abort(); }
+#define __OOX_ASSERT_EX(b, m) __OOX_ASSERT(b,m)
 
 #include <oox/oox.h>
 
@@ -51,10 +51,10 @@ namespace Fib1 {
 }
 namespace Fib2 {
     // Optimized number and order of tasks
-    oox_var<int> Fib(int n) {                              // OOX: High-level continuation style
+    oox_var<int> Fib(int n) {                                         // OOX: High-level continuation style
         if(n < 2) return n;
-        auto right = oox_run(Fib, n-2);                    // spawn right child
-        return oox_run(std::plus<int>(), Fib(n-1), right); // assign continuation
+        auto right = oox_run(Fib, n-2);                               // spawn right child
+        return oox_run(std::plus<int>(), Fib(n-1), std::move(right)); // assign continuation
     }
 }
 
@@ -207,13 +207,15 @@ void LCS( const char* x, size_t xlen, const char* y, size_t ylen ) {
 
 }//namespace Wavefront_LCS
 
-int plus(int a, int b) { return a+b; }
-
 #if HAVE_TBB
 #define OOX OOX_TBB
+#elif HAVE_TF
+#define OOX OOX_TF
 #else
 #define OOX OOX_STD
 #endif
+
+int plus(int a, int b) { return a+b; }
 
 TEST(OOX, Simple) {
     const oox_var<int> a = oox_run(plus, 2, 3);
@@ -234,7 +236,11 @@ TEST(OOX, Arch) {
     ASSERT_EQ(arch, 3);
 }
 TEST(OOX, Fib) {
-    int x = 20;
+#ifdef OOX_USING_STD
+    int x = 15;
+#else
+    int x = 25;
+#endif
     int fib0 = Fib0::Fib(x);
     int fib1 = oox_wait_and_get(Fib1::Fib(x));
     int fib2 = oox_wait_and_get(Fib2::Fib(x));
@@ -254,6 +260,10 @@ TEST(OOX, Wavefront) {
 
 int main(int argc, char** argv) {
     testing::InitGoogleTest(&argc, argv);
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-v") == 0)
+            g_oox_verbose = true;
+    }
 
     int err{0};
     try {

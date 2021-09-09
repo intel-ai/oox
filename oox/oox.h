@@ -5,8 +5,11 @@
 #include <atomic>
 
 #if HAVE_TBB
+#define TBB_USE_ASSERT 0
 #include <oneapi/tbb/detail/_task.h>
 #include <oneapi/tbb/task_group.h>
+#elif HAVE_TF
+#include <taskflow/taskflow.hpp>
 #else
 #include <future>
 #endif
@@ -94,20 +97,50 @@ void oox_wait_for_all(oox_node &) {}
 
 namespace internal {
 
-#if HAVE_TBB
+struct task_life {
+    // Pointers to this structure and live output nodes
+    std::atomic<int> life_count;
+    virtual ~task_life() {}
+
+    void life_set_count(int lifetime) {
+        life_count.store(lifetime, std::memory_order_release);
+    }
+
+    int  life_get_count() {
+        return life_count.load(std::memory_order_acquire);
+    }
+
+    bool life_release( int n ) {
+        if(life_count.load(std::memory_order_acquire) == n) {
+            __OOX_TRACE("%p release all: %d", this, n);
+            return true;
+        }
+        else {
+            int k = life_count-=n;
+            __OOX_TRACE("%p release: %d", this, k);
+            __OOX_ASSERT(k >= 0, "invalid life_count detected while removing prerequisite");
+            return (k == 0);          // double-check after atomic
+        }
+    }
+};
+
+#if HAVE_TBB ///////////////////////// TBB ////////////////////////////////////////
+#define OOX_USING_TBB
 using tbb::detail::d1::execution_data;
 using tbb_task = tbb::detail::d1::task;
 using tbb::detail::d1::small_object_allocator;
 static tbb::task_group_context tbb_context;
 #define TASK_EXECUTE_METHOD tbb_task* execute(execution_data&) override
 
-struct task : public tbb_task {
+struct task : public tbb_task, task_life {
     tbb::detail::d1::wait_context waiter{1};
+#ifndef OOX_USE_STDMALLOC
     small_object_allocator alloc{};
+#endif
 #if TBB_USE_ASSERT
-    bool is_spawned{false};
+    std::atomic<bool> is_spawned{false};
     virtual ~task() {
-        if(!is_spawned)
+        if(!is_spawned.load(std::memory_order_acquire);)
             waiter.release();
     }
 #else
@@ -116,46 +149,93 @@ struct task : public tbb_task {
 
     TASK_EXECUTE_METHOD {
         __OOX_ASSERT(false, "");
+        return nullptr;
     }
     virtual tbb_task* cancel(execution_data& ed) override {
         __OOX_ASSERT(false, "");
+        return nullptr;
     }
-    void destroy() {
-        alloc.delete_object(this);
+    void release( int n = 1 ) {
+        if(life_release(n)) {
+#if OOX_USE_STDMALLOC
+            delete this;
+#else
+            this->~task();
+            alloc.deallocate(this);
+#endif
+        }
     }
     template<typename T, typename... Args>
     static T* allocate(Args && ... args) {
+#if OOX_USE_STDMALLOC
+        return new T(std::forward<Args>(args)...);
+#else
         small_object_allocator a{};
         auto *t = a.new_object<T>(std::forward<Args>(args)...);
         t->alloc = a; // store deallocation info
         return t;
+#endif
     }
     void spawn() {
 #if TBB_USE_ASSERT
-        is_spawned = true;
+        is_spawned.store(true, std::memory_order_release);
 #endif
         tbb::detail::d1::spawn(*this, tbb_context);
     }
     void wait() {
+        __OOX_ASSERT(life_get_count(), "");
         tbb::detail::d1::wait(waiter, tbb_context);
     }
     void wakeup() {
         waiter.release();
     }
 };
-#else // HAVE_TBB
+#elif HAVE_TF /////////////////////// Taskflow ///////////////////////////////////////
+#define OOX_USING_TF
 #define TASK_EXECUTE_METHOD void* execute() override
 
-struct task {
+tf::Executor tf_pool; // TODO :)
+
+struct task : task_life {
+    
     std::promise<void> waiter;
 
     virtual ~task() {}
     virtual void* execute() = 0;
 
-    void destroy() {
-        delete this;
+    void release( int n = 1 ) {
+        if(life_release(n))
+            delete this;
     }
+    template<typename T, typename... Args>
+    static T* allocate(Args && ... args) {
+        return new T(std::forward<Args>(args)...);
+    }
+    void spawn() {
+        tf_pool.silent_async([this]{this->execute();});
+    }
+    void wait() {
+        waiter.get_future().wait();
+    }
+    void wakeup() {
+        waiter.set_value();
+    }
+};
 
+#else /////////////////////////////// plain STD impl /////////////////////////////////
+#define OOX_USING_STD
+#define TASK_EXECUTE_METHOD void* execute() override
+
+struct task : task_life {
+    std::promise<void> waiter;
+
+    virtual ~task() {}
+    virtual void* execute() = 0;
+
+    void release( int n = 1 ) {
+        if(life_release(n))
+            delete this;
+    }
     template<typename T, typename... Args>
     static T* allocate(Args && ... args) {
         return new T(std::forward<Args>(args)...);
@@ -170,7 +250,7 @@ struct task {
         waiter.set_value();
     }
 };
-#endif // HAVE_TBB
+#endif // HAVE_TBB,TF /////////////////////////////////////////////////////////////////////
 
 struct task_node;
 struct oox_var_base;
@@ -220,8 +300,6 @@ struct arc_list {
 struct task_node : public task, arc_list {
     // Prerequisites to start the task
     std::atomic<int> start_count;
-    // Pointers to this structure and live output nodes
-    std::atomic<int> life_count;
     // TODO: exception storage here?
 
     task_node() { } // prepare the task for waiting on it directly
@@ -247,8 +325,6 @@ struct task_node : public task, arc_list {
     int  remove_back_arc( int output_port, int n=1 );
     // Set new output dependence
     void set_next_writer( int output_port, task_node* n );
-    // decrement lifetime references
-    void release( int n=1 );
     // Call base notify successors
     template<int slots>
     void notify_successors();
@@ -358,7 +434,6 @@ int task_node::notify_successors( int output_slots, int *count ) {
     for( int i = 0; i <  output_slots; i++ )
         refs += do_notify_out( i, count[i] );
     __OOX_ASSERT(refs>=0, "");
-    wakeup();
     return refs;
 }
 
@@ -366,10 +441,6 @@ void task_node::remove_prerequisite( int n ) {
     int k = start_count-=n;
     __OOX_ASSERT(k>=0,"invalid start_count detected while removing prerequisite");
     if( k==0 ) {
-#if OOX_AFFINITY
-        if( affinity )
-            t.set_affinity(affinity);
-#endif /* OOX_AFFINITY */
         __OOX_TRACE("%p remove_prerequisite: spawning",this);
         spawn();
     }
@@ -419,24 +490,11 @@ void task_node::set_next_writer( int output_port, task_node* d ) {
     }
 }
 
-void task_node::release( int n ) {
-    if(life_count.load(std::memory_order_acquire) == n) {
-        __OOX_TRACE("%p release all: %d", this, n);
-        this->destroy();
-    }
-    else {
-        int k = life_count-=n;
-        __OOX_TRACE("%p release: %d", this, k);
-        __OOX_ASSERT(k >= 0, "invalid life_count detected while removing prerequisite");
-        if(k == 0)          // double-check after atomic
-            this->destroy();
-    }
-}
-
 template<int slots>
 void task_node::notify_successors() {
     int counters[slots];
     int n = notify_successors( slots, counters );
+    wakeup();
     release(n);
 }
 
@@ -482,7 +540,7 @@ struct oox_var_base {
     void bind_to( task_node * t, void* ptr, int lifetime, bool fwd = false ) {
         current_task = t, current_port = 0, storage_ptr = ptr, is_forward = fwd;
         storage_offset = uintptr_t(storage_ptr) - uintptr_t(current_task);
-        t->life_count.store(lifetime, std::memory_order_release);
+        t->life_set_count(lifetime);
         __OOX_TRACE("%p bind: store=%p life=%d fwd=%d",t,ptr,lifetime,fwd);
     }
     void wait() {
@@ -566,6 +624,7 @@ class oox_var : public internal::oox_var_base {
         __OOX_TRACE("%p oox_var",v);
         v->out(0).next_writer.store((internal::task_node*)uintptr_t(1), std::memory_order_release);
         v->head.store((internal::arc*)uintptr_t(1), std::memory_order_release);
+        // nobody wait on this task
         this->bind_to( v, &v->my_precious, 2 );
         return storage_ptr;
     }
@@ -740,20 +799,25 @@ struct functional_task<slots, F, oox_var<VT> > : storage_task<slots, F> {
     // TODO: NRVO optimized forwarding
     using storage_task<slots, F>::storage_task;
     typename std::aligned_storage< sizeof(oox_var<VT>), alignof(oox_var<VT>) >::type my_result;
-
+    bool is_executed = false;
     TASK_EXECUTE_METHOD {
 #if 0
         __OOX_TRACE("%p do_run: start forward",this);
         new(my_result.begin()) oox_var<VT>( this->my_precious() );
         return task_node::forward_successors<slots>( *my_result.begin() );
 #else
-        __OOX_TRACE("%p do_run: start forward",this);
-        new(&my_result) oox_var<VT>( this->my_precious() );
-        this->start_count.store(1, std::memory_order_release);
-        arc* j = new arc( this, 0, arc::flow_only ); // TODO: embed into the task
-        if( reinterpret_cast<oox_var<VT>*>(&my_result)->current_task->add_arc(j) )
-            return nullptr;
-        else delete j;
+        if( !is_executed ) {
+            __OOX_TRACE("%p do_run: start forward",this);
+            new(&my_result) oox_var<VT>( this->my_precious() );
+            is_executed = true;
+            this->start_count.store(1, std::memory_order_release);
+            arc* j = new arc( this, 0, arc::flow_only ); // TODO: embed into the task
+            if( reinterpret_cast<oox_var<VT>*>(&my_result)->current_task->add_arc(j) ) {
+                __OOX_TRACE("%p do_run: add_arc", this); // recycle_as_continuation was here
+                return nullptr;
+            }
+            else delete j;
+        }
         __OOX_TRACE("%p do_run: notify forward",this);
         task_node::notify_successors<slots>();
         return nullptr;

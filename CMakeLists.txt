@@ -7,6 +7,8 @@ project(OOX VERSION 0.2.0 LANGUAGES CXX)
 # build options
 option(OOX_BUILD_BENCHMARKS "Enables builds of benchmarks" ON)
 option(OOX_BUILD_TESTS "Enables builds of tests" ON)
+option(OOX_ENABLE_TBB "Enable TBB for threading (if found)" ON)
+option(OOX_ENABLE_TF "Enable Taskflow for threading (if found)" ON)
 
 # Global features
 if(OOX_SANITIZE)
@@ -27,8 +29,16 @@ include(GNUInstallDirs)
 # Enable test
 include(CTest)
 
-# Find pthread package
+# Find packages
 find_package(Threads REQUIRED)
+
+if(OOX_ENABLE_TBB)
+  find_package(TBB)  # not REQUIRED
+endif()
+
+if(OOX_ENABLE_TF)
+  find_package(Taskflow)  # not REQUIRED
+endif()
 
 # Library
 add_library(${PROJECT_NAME} INTERFACE)

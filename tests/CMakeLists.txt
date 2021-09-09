@@ -6,8 +6,6 @@ list(APPEND OOX_UNITTESTS
   test_oox
   )
 
-find_package(TBB)  # not REQUIRED
-
 foreach(unittest IN LISTS OOX_UNITTESTS)
   add_executable(${unittest} ${unittest}.cpp)
   target_include_directories(${unittest} PRIVATE ${PROJECT_NAME})
@@ -19,5 +17,12 @@ foreach(unittest IN LISTS OOX_UNITTESTS)
     target_include_directories(${unittest}_tbb PRIVATE ${PROJECT_NAME})
     target_link_libraries(${unittest}_tbb ${PROJECT_NAME} gtest TBB::tbb)
     gtest_discover_tests(${unittest}_tbb)
+  endif()
+  if(Taskflow_FOUND) # build test in TF mode as well
+    add_executable(${unittest}_tf ${unittest}.cpp)
+    target_compile_definitions(${unittest}_tf PRIVATE HAVE_TF)
+    target_include_directories(${unittest}_tf PRIVATE ${PROJECT_NAME})
+    target_link_libraries(${unittest}_tf ${PROJECT_NAME} gtest Taskflow::Taskflow)
+    gtest_discover_tests(${unittest}_tf)
   endif()
 endforeach()

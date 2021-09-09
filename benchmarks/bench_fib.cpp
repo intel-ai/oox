@@ -4,7 +4,7 @@
 constexpr int FibN=20;
 
 namespace Serial {
-    int Fib(int n) {
+    int Fib(volatile int n) {
         if(n < 2) return n;
         return Fib(n-1) + Fib(n-2);
     }
@@ -20,7 +20,7 @@ BENCHMARK(Fib_Serial);
 namespace OOX {
     oox_var<int> Fib(int n) {
         if(n < 2) return n;
-        return oox_run(std::plus<int>(), Fib(n-1), oox_run(Fib, n-2));
+        return oox_run(std::plus<int>(), oox_run(Fib, n-1), Fib(n-2));
     }
 }
 // Define another benchmark
@@ -31,6 +31,7 @@ static void Fib_OOX(benchmark::State& state) {
 BENCHMARK(Fib_OOX);
 
 #if HAVE_TBB
+
 #include <tbb/tbb.h>
 namespace TBB {
     int Fib(int n) {                  // TBB: High-level blocking style
@@ -49,6 +50,7 @@ static void Fib_TBB(benchmark::State& state) {
     TBB::Fib(FibN);
 }
 BENCHMARK(Fib_TBB);
-#endif
+
+#endif //HAVE_TBB
 
 BENCHMARK_MAIN();

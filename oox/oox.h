@@ -343,7 +343,7 @@ bool arc_list::add_arc( arc* i ) {
         if( j==(arc*)uintptr_t(1) )
             return false;
         i->next = j;
-        if( head.compare_exchange_weak( j, i ) )
+        if( head.compare_exchange_weak( j, i ) ) // TODO: weak or strong? what's perf?
             return true;
     }
 }

@@ -159,7 +159,7 @@ int LCS( const char* x, size_t xlen, const char* y, size_t ylen )
 
     for( size_t i=1; i<=xlen; ++i )
         for( size_t j=1; j<=ylen; ++j )
-            F[i][j] = oox_run(f, i, j, i+j==0?zero:F[i-1][j-1], j==0?zero:F[i][j-1], i==0?zero:F[i-1][j]);
+            F[i][j] = std::move(oox_run(f, i, j, i+j==0?zero:F[i-1][j-1], j==0?zero:F[i][j-1], i==0?zero:F[i-1][j]));
 
     auto r = oox_wait_and_get(F[xlen][ylen]);
     delete [] F;
@@ -207,7 +207,9 @@ void LCS( const char* x, size_t xlen, const char* y, size_t ylen ) {
 
 }//namespace Wavefront_LCS
 
-#if HAVE_TBB
+#if OOX_SERIAL_DEBUG
+#define OOX OOX_SQ
+#elif HAVE_TBB
 #define OOX OOX_TBB
 #elif HAVE_TF
 #define OOX OOX_TF

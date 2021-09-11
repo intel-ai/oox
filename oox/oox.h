@@ -28,7 +28,7 @@
 
 #define __OOX_AUTO_TYPE_FUNC(expr) ->decltype(expr) { return expr; }
 
-#if OOX_SERIAL == 1 //////////////////// Immediate execution //////////////////////////////////
+#if OOX_SERIAL_DEBUG //////////////////// Immediate execution //////////////////////////////////
 class oox_node {
     oox_node &operator=(const oox_node &) = delete;
 };
@@ -41,7 +41,10 @@ struct oox_var : public oox_node {
                   "for const types use shared_ptr<T>.");
     T my_value;
     oox_var() : my_value() {}
-    oox_var(T t) : my_value(t) {}
+    oox_var(const T& t) noexcept : my_value( t ) {}
+    oox_var(T&& t)      noexcept : my_value( std::move(t) ) { }
+    oox_var(oox_var<T>&& t) : my_value( std::move(t.my_value) ) { }
+    oox_var& operator=(oox_var<T>&& t) { my_value = std::move(t.my_value); return *this; }
 };
 
 template<>

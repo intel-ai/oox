@@ -1,6 +1,5 @@
 list(APPEND OOX_BENCHMARKS 
   bench_fib
-  bench_loops
 )
 
 enable_testing()

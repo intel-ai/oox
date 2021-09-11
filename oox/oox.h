@@ -14,9 +14,6 @@
 #include <future>
 #endif
 
-#ifndef OOX_SERIAL
-#define OOX_SERIAL 0
-#endif
 #ifndef __OOX_TRACE
 #define __OOX_TRACE(...)
 #endif

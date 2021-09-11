@@ -53,4 +53,43 @@ BENCHMARK(Fib_TBB);
 
 #endif //HAVE_TBB
 
+#if HAVE_TF
+
+#include <taskflow/taskflow.hpp>
+
+namespace TF {
+    int spawn(int n, tf::Subflow& sbf) {
+        if (n < 2) return n;
+        int res1, res2;
+
+        // compute f(n-1)
+        sbf.emplace([&res1, n] (tf::Subflow& sbf) { res1 = spawn(n - 1, sbf); } );
+            //.name(std::to_string(n-1));
+
+        // compute f(n-2)
+        sbf.emplace([&res2, n] (tf::Subflow& sbf) { res2 = spawn(n - 2, sbf); } );
+            //.name(std::to_string(n-2));
+
+        sbf.join();
+        return res1 + res2;
+    }
+
+    void Fib(int N) {
+        tf::Executor executor;
+        tf::Taskflow taskflow("fibonacci");
+        int res;  // result
+        taskflow.emplace([&res, N] (tf::Subflow& sbf) { 
+            res = spawn(N, sbf);  
+        }); //.name(std::to_string(N));
+
+        executor.run(taskflow).wait();        
+    }
+}
+static void Fib_TF(benchmark::State& state) {
+  for (auto _ : state)
+    TF::Fib(FibN);
+}
+BENCHMARK(Fib_TF);
+#endif //HAVE_TF
+
 BENCHMARK_MAIN();

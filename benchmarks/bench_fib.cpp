@@ -1,7 +1,7 @@
 #include <benchmark/benchmark.h>
 #include <oox/oox.h>
 
-constexpr int FibN=20;
+constexpr int FibN=28;
 
 namespace Serial {
     int Fib(volatile int n) {

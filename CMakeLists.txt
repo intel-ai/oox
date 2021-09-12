@@ -40,6 +40,8 @@ if(OOX_ENABLE_TF)
   find_package(Taskflow)  # not REQUIRED
 endif()
 
+find_package(OpenMP)
+
 # Library
 add_library(${PROJECT_NAME} INTERFACE)
 target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_11)

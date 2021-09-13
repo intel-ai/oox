@@ -56,6 +56,8 @@ BENCHMARK(Fib_TBB)->Unit(benchmark::kMillisecond)->UseRealTime();
 #if HAVE_TF
 
 #include <taskflow/taskflow.hpp>
+#include <tbb/info.h>
+const int nThreads = tbb::info::default_concurrency(); // respect affinity mask
 
 namespace TF {
     int spawn(int n, tf::Subflow& sbf) {
@@ -75,7 +77,7 @@ namespace TF {
     }
 
     void Fib(int N) {
-        tf::Executor executor;
+        tf::Executor executor(nThreads);
         tf::Taskflow taskflow("fibonacci");
         int res;  // result
         taskflow.emplace([&res, N] (tf::Subflow& sbf) { 

@@ -36,14 +36,18 @@
 #define TBB_BEST TBB_STATIC
 #endif
 
+#define TF_SIMPLE 30
+
 #ifndef PARALLEL
 #define PARALLEL TBB_SIMPLE
 #endif
 
 #if PARALLEL < TBB_SIMPLE
 #define __USE_OPENMP__ 1
-#elif PARALLEL >= TBB_SIMPLE
+#elif PARALLEL < TF_SIMPLE
 #define __USE_TBB__ 1
+#else
+#define __USE_TF__ 1
 #endif
 
 #include <algorithm>
@@ -52,7 +56,7 @@
 
 #if __USE_OPENMP__
 #include <omp.h>
-#else
+#elif __USE_TBB__
 #if PARALLEL == TBB_RAPID
     #include "rapid_start.h"
 #endif
@@ -72,6 +76,8 @@
 #define __USE_OBSERVER__ 0 // I see no positive changes from using observer now
 #endif
 
+#else // __USE_TF__
+#include <taskflow/taskflow.hpp>
 #endif
 
 #include <sys/syscall.h>
@@ -117,6 +123,11 @@ static Harness::RapidStart g_rs;
 static tbb::task_arena* g_globalArena = NULL;
 #endif
 #endif //__USE_TBB__
+
+#if __USE_TF__
+tf::Executor executor;
+tf::Taskflow taskflow;
+#endif // __USE_TF__
 
 static int InitParallel(int n = 0)
 {
@@ -170,7 +181,7 @@ static int InitParallel(int n = 0)
         }
     }
 
-#else // OpenMP
+#elif __USE_OPENMP__ // OpenMP
 
 #if PARALLEL == OMP_S_STEAL
     setenv("OMP_SCHEDULE", "static_steal", 1);
@@ -219,7 +230,13 @@ static int InitParallel(int n = 0)
         fflush(0);
 #endif
     }
-
+#elif __USE_TF__
+    nThreads = n? n : std::thread::hardware_concurrency();
+    
+    // configure OMP environment
+    printf("Setting %d threads for TaskFlow\n", nThreads); fflush(0);
+    taskflow.for_each_index(0, nThreads, 1, [](int _){});
+    executor.run(taskflow).get();
 #endif
     return nThreads;
 }
@@ -342,17 +359,11 @@ void parallel_for( Iter s, Iter e, Iter g, const Body &b) {
         executive_range( i );
 
 #elif PARALLEL == TBB_RAPID
-    if(nThreads <= 64)
-        g_rs.parallel_ranges(s, e, executive_range);
-    else {
-        g_rs.parallel_ranges(s, e, [executive_range](Iter s, Iter e, int p)
-        {
-            tscg_task_start( out );
-            tscg_task_data( data, "%d + %d #%d", int(s), int(e-s), p );
-            Harness::static_parallel_ranges(s, e, executive_range, 4, [p](int a){return 4*(p-1)+a;});
-            tscg_task_stop( out, data );
-        } );
-    }
+    g_rs.parallel_ranges(s, e, executive_range);
+
+#elif PARALLEL == TF_SIMPLE
+    taskflow.for_each_index(s, e, 1, executive_range);
+    executor.run(taskflow).get();
 
 #else // other TBB parallel_fors
 //  implied:  static tbb::task_group_context context(tbb::task_group_context::isolated, tbb::task_group_context::default_traits);

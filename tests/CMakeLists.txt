@@ -7,7 +7,7 @@ list(APPEND OOX_UNITTESTS
   )
 
 foreach(unittest IN LISTS OOX_UNITTESTS)
-  # Fallback implementation
+  # Default implementation
   add_executable(${unittest} ${unittest}.cpp)
   target_include_directories(${unittest} PRIVATE ${PROJECT_NAME})
   target_link_libraries(${unittest} ${PROJECT_NAME} gtest)

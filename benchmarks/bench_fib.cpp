@@ -14,7 +14,7 @@ static void Fib_Serial(benchmark::State& state) {
     Serial::Fib(FibN);
 }
 // Register the function as a benchmark
-BENCHMARK(Fib_Serial);
+BENCHMARK(Fib_Serial)->Unit(benchmark::kMillisecond)->UseRealTime();
 
 
 namespace OOX {
@@ -28,7 +28,7 @@ static void Fib_OOX(benchmark::State& state) {
   for (auto _ : state)
     oox_wait_and_get(OOX::Fib(FibN));
 }
-BENCHMARK(Fib_OOX);
+BENCHMARK(Fib_OOX)->Unit(benchmark::kMillisecond)->UseRealTime();
 
 #if HAVE_TBB
 
@@ -49,7 +49,7 @@ static void Fib_TBB(benchmark::State& state) {
   for (auto _ : state)
     TBB::Fib(FibN);
 }
-BENCHMARK(Fib_TBB);
+BENCHMARK(Fib_TBB)->Unit(benchmark::kMillisecond)->UseRealTime();
 
 #endif //HAVE_TBB
 
@@ -89,7 +89,7 @@ static void Fib_TF(benchmark::State& state) {
   for (auto _ : state)
     TF::Fib(FibN);
 }
-BENCHMARK(Fib_TF);
+BENCHMARK(Fib_TF)->Unit(benchmark::kMillisecond)->UseRealTime();
 #endif //HAVE_TF
 
 BENCHMARK_MAIN();

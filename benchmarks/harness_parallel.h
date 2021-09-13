@@ -22,6 +22,7 @@
 #define OMP_GUIDED  3
 #define OMP_RUNTIME 4
 #define OMP_S_STEAL 5
+#define OMP_STATIC_STEAL 5
 #ifndef OMP_BEST
 #define OMP_BEST OMP_STATIC
 #endif
@@ -29,6 +30,7 @@
 #define TBB_SIMPLE 10
 #define TBB_AUTO    11
 #define TBB_AFFINITY 12
+#define TBB_C_AFF 14
 #define TBB_CONST_AFFINITY 14
 #define TBB_STATIC    15
 #define TBB_RAPID   17
@@ -54,6 +56,7 @@
 #include <stdio.h>
 #include <atomic>
 
+#include <tbb/info.h>
 #if __USE_OPENMP__
 #include <omp.h>
 #elif __USE_TBB__
@@ -131,6 +134,7 @@ tf::Taskflow taskflow;
 
 static int InitParallel(int n = 0)
 {
+    nThreads = n? n : tbb::info::default_concurrency(); //tbb::this_task_arena::max_concurrency();
 #if __USE_TBB__
     if(TBB_INTERFACE_VERSION != TBB_runtime_interface_version()) {
         fprintf(stderr, "ERROR: Compiled with TBB interface version " __TBB_STRING(TBB_INTERFACE_VERSION) " while runtime provides %d\n",
@@ -149,7 +153,6 @@ static int InitParallel(int n = 0)
     setenv("TBB_MALLOC_USE_HUGE_PAGES", "1", 1);
     scalable_allocation_mode(USE_HUGE_PAGES, 1);
 
-    nThreads = n? n : tbb::info::default_concurrency(); //tbb::this_task_arena::max_concurrency();
 #ifdef LOG_INFO
     printf("Running %d threads, TBB_Scheduler thread id = %x\n", nThreads,  (int)syscall(SYS_gettid)); fflush(0);
 #endif
@@ -160,7 +163,7 @@ static int InitParallel(int n = 0)
         g_tbbConfig = new tbb::global_control(tbb::global_control::max_allowed_parallelism, nThreads);
         if(!g_globalRefCounter++) {
 #if PARALLEL == TBB_RAPID
-            Harness::PinTbbThreads( nThreads );
+            //Harness::PinTbbThreads( nThreads );
             g_rs.init(nThreads);
 #elif __USE_TASK_ARENA__
             __TBB_ASSERT(!g_globalArena,0);
@@ -207,7 +210,7 @@ static int InitParallel(int n = 0)
     setenv("KMP_VERSION", "1", 1);
 //    setenv("KMP_D_DEBUG", "7", 1);
 #endif
-    nThreads = n? n : omp_get_max_threads();
+    //nThreads = n? n : omp_get_max_threads();
 
     // configure OMP environment
     printf("Setting %d threads for OMP\n", nThreads); fflush(0);
@@ -231,9 +234,8 @@ static int InitParallel(int n = 0)
 #endif
     }
 #elif __USE_TF__
-    nThreads = n? n : std::thread::hardware_concurrency();
+    //nThreads = n? n : std::thread::hardware_concurrency();
     
-    // configure OMP environment
     printf("Setting %d threads for TaskFlow\n", nThreads); fflush(0);
     taskflow.for_each_index(0, nThreads, 1, [](int _){});
     executor.run(taskflow).get();

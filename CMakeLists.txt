@@ -51,6 +51,7 @@ target_include_directories(${PROJECT_NAME} INTERFACE
   $<INSTALL_INTERFACE:include/> 
 )
 
+enable_testing()
 if(OOX_BUILD_TESTS)
   add_subdirectory(tests)
 endif(OOX_BUILD_TESTS)

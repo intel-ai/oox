@@ -11,10 +11,13 @@ debug:
 	cmake -B build_debug -S . -DCMAKE_BUILD_TYPE=Debug && make -C build_debug -j$(shell nproc)
 
 clean:
-	rm -rf build; rm -rf build_debug
+	rm -rf build build_debug
 
 test:
 	cd build/; ctest
+
+install:
+	make -C build install
 
 bench_loops:
 	@echo ---------------------------------------------------------------

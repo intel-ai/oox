@@ -133,8 +133,8 @@ public:
         mode = 2;
     }
     void init ( int maxThreads = MAX_THREADS ) {
+        if( maxThreads > MAX_THREADS ) maxThreads = MAX_THREADS;
         n_tasks = maxThreads;
-        if( n_tasks > 60/*MAX_THREADS*/ ) n_tasks = 60/*MAX_THREADS*/;
 #if 1
         for ( int i = 1; i < maxThreads; ++i )
             tg.run( TrapperTask(i, *this) );

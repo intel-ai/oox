@@ -27,6 +27,7 @@ int main(int argc, char** argv) {
     benchmark::RegisterBenchmark(("Loop1/"+parallel_str).c_str(), Loop1)->UseRealTime()->Unit(benchmark::kMicrosecond);
 
     Harness::InitParallel();
+    //printf("Initialized for %d threads\n", Harness::nThreads);
     benchmark::RunSpecifiedBenchmarks();
     Harness::DestroyParallel();
 }

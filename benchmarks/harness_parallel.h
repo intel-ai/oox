@@ -79,7 +79,7 @@
 #define __USE_OBSERVER__ 0 // I see no positive changes from using observer now
 #endif
 
-#else // __USE_TF__
+#elif __USE_TF__
 #include <taskflow/taskflow.hpp>
 #endif
 
@@ -153,9 +153,7 @@ static int InitParallel(int n = 0)
     setenv("TBB_MALLOC_USE_HUGE_PAGES", "1", 1);
     scalable_allocation_mode(USE_HUGE_PAGES, 1);
 
-#ifdef LOG_INFO
-    printf("Running %d threads, TBB_Scheduler thread id = %x\n", nThreads,  (int)syscall(SYS_gettid)); fflush(0);
-#endif
+    printf("Setting %d threads for TBB\n", nThreads); fflush(0);
 
     if(!g_localRefCounter++) {
         __TBB_ASSERT(!g_tbbConfig,0);
@@ -167,7 +165,9 @@ static int InitParallel(int n = 0)
             g_rs.init(nThreads);
 #elif __USE_TASK_ARENA__
             __TBB_ASSERT(!g_globalArena,0);
+    #ifdef LOG_INFO
             printf("Using TASK_ARENA(explicit) with %d threads\n", nThreads); fflush(0);
+    #endif
             g_globalArena = new tbb::task_arena(nThreads, 1);
             g_globalArena->execute( [&]{
                 //Harness::PinTbbThreads( nThreads );

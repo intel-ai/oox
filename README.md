@@ -1,9 +1,10 @@
 # OOX 2.0
-Out-of-Order Executors library. Yet another approach to efficient and scalable tasking API and scheduling.
+Out-of-Order Executors library. Yet another approach to efficient and scalable tasking API and task scheduling.
 
 ## Continuation-focus design
 With nested parallelism, blocking style programming is deadlock-prone and has latency problems. OOX provides semantic way out of these issues.
-On the other hand, std::future is not instended for continuation tasks. Even with existing proposals like .then(), the continuation-style is limited - OOX offers:
+
+`std::future` is not intended for continuation tasks. Even with existing proposals like `.then()`, the continuation-style is limited - while OOX offers:
 - Implicitly collapse template recursion of 'futures': `future x = async(async(async(…)));`
 - Implicitly unpack 'futures' to a value in arguments: `async([](int a){}, async(…));`
 - Implicit value conversion for a 'future' variable. e.g.: `future<int> x{2};`
@@ -56,7 +57,7 @@ int FibMain(int N) {
   - `using oox::node = oox::var<void>`: carries solely dependency info
 - `oox::var<T> oox::run(T(Func&)(...), Args...)`: Basic tasking API, spawns a task when arguments are ready and returns `oox::var` as a promise to provide the result of Func in future. If there are `oox::var` arguments, which are not ready yet (i.e. they are "promises" themselves), it makes a continuation task, which depends on completion of pending `oox::var` arguments.
 
-## Design pilars
+## Design pillars
 - Abstract user functor from async dependencies: `oox::run([](functor args...){}, dependency args...)`
 - Reuse functor and runner arg types matching for dependency type specification
   - Flow, output, and anti-dependencies are deduced

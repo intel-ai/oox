@@ -1,5 +1,10 @@
 # OOX 2.0
-Out-of-Order Executors library. Yet another approach to efficient and scalable tasking API and task scheduling.
+Out-of-Order Executor library. Yet another approach to efficient and scalable tasking API and task scheduling.
+
+## Try it
+* **Requirements**: Install cmake, make, googletest, google benchmark, and optionally TBB (recommended), and TaskFlow libraries into your environment.
+* **Build & run**: `make`
+* **Install**: `make install`
 
 ## Continuation-focus design
 With nested parallelism, blocking style programming is deadlock-prone and has latency problems. OOX provides semantic way out of these issues.
@@ -34,21 +39,10 @@ and
 int Fib(int n, tf::Subflow& sbf) {  // TaskFlow: High-level blocking style programming
     if (n < 2) return n;
     int res1, res2;
-    sbf.emplace([&res1, n] (tf::Subflow& sbf) { res1 = spawn(n - 1, sbf); } );
-    sbf.emplace([&res2, n] (tf::Subflow& sbf) { res2 = spawn(n - 2, sbf); } );
+    sbf.emplace([&res1, n] (tf::Subflow& sbf) { res1 = Fib(n - 1, sbf); } );
+    sbf.emplace([&res2, n] (tf::Subflow& sbf) { res2 = Fib(n - 2, sbf); } );
     sbf.join();                     // blocks here
     return res1 + res2;
-}
-
-int FibMain(int N) {
-    tf::Executor executor(nThreads);
-    tf::Taskflow taskflow("fibonacci");
-    int result;
-    taskflow.emplace([&result, N] (tf::Subflow& sbf) { 
-        result = Fib(N, sbf);
-    });
-    executor.run(taskflow).wait();        
-    return result;
 }
 ```
 
@@ -57,11 +51,13 @@ int FibMain(int N) {
   - `using oox::node = oox::var<void>`: carries solely dependency info
 - `oox::var<T> oox::run(T(Func&)(...), Args...)`: Basic tasking API, spawns a task when arguments are ready and returns `oox::var` as a promise to provide the result of Func in future. If there are `oox::var` arguments, which are not ready yet (i.e. they are "promises" themselves), it makes a continuation task, which depends on completion of pending `oox::var` arguments.
 
-## Design pillars
+## Design
+Pillars:
 - Abstract user functor from async dependencies: `oox::run([](functor args...){}, dependency args...)`
 - Reuse functor and runner arg types matching for dependency type specification
   - Flow, output, and anti-dependencies are deduced
   - Makes duplication of arguments finally useful
+- Have clear serialization semantics for ease of debugging
 
 Matching rules:
 - plain arguments:
@@ -80,8 +76,8 @@ Stored types:
 Access types of `oox::var`'s stored value:
 - **Read-Write**: *Exclusive* access: both matching arguments are passed by reference
 - **Read-Only**: *Shared* access: `auto f = [](const A&){}` with `oox::var<A>& a` or `const oox::var<A>& a` while running `oox::run(f, a)`
-- **Copy-Only**: *Copy* access: like read-only but does not restrict read-write access after a copy is done, `auto f = [](A){}` or `auto f = [](A&&){}` with `oox::var<A>& a` or `const oox::var<A>& a` while running `oox::run(f, a)`
-- **Final-Write**: dispose after use: `oox::var<A>&& a`
+- **Copy-Only**: *Copy* access: like read-only but does not hold off following read-write access after a copy is done, `auto f = [](A){}` or `auto f = [](A&&){}` with `oox::var<A>& a` or `const oox::var<A>& a` while running `oox::run(f, a)`
+- **Final**: dispose after use: `oox::var<A>&& a`
 
 ## More resources
 Please see https://habr.com/en/company/intel/blog/542908/ for more info.

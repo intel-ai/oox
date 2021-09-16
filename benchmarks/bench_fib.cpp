@@ -20,7 +20,8 @@ BENCHMARK(Fib_Serial)->Unit(benchmark::kMillisecond)->UseRealTime();
 namespace OOX {
     oox_var<int> Fib(int n) {
         if(n < 2) return n;
-        return oox_run(std::plus<int>(), oox_run(Fib, n-1), Fib(n-2));
+        auto right = oox_run(Fib, n-2);
+        return oox_run(std::plus<int>(), Fib(n-1), std::move(right));
     }
 }
 // Define another benchmark

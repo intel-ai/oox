@@ -1,20 +1,23 @@
 list(APPEND OOX_BENCHMARKS bench_fib)
-list(APPEND OOX_LOOP_MODES OMP_STATIC OMP_DYNAMIC OMP_S_STEAL TBB_SIMPLE TBB_AUTO TBB_AFFINITY TBB_C_AFF TBB_RAPID TF_SIMPLE)
 
 find_package(benchmark REQUIRED)
 
-set(OOX_LIBS "")
+if(OpenMP_FOUND)
+  list(APPEND OOX_LOOP_MODES OMP_STATIC OMP_DYNAMIC)
+endif()
 
 if(TBB_FOUND)
   message(STATUS "Building with TBB ${TBB_DIR}")
   add_definitions("-DHAVE_TBB")
   list(APPEND OOX_LIBS TBB::tbb TBB::tbbmalloc)
+  list(APPEND OOX_LOOP_MODES TBB_SIMPLE TBB_AUTO TBB_AFFINITY TBB_RAPID)
 endif()
 
 if(Taskflow_FOUND)
   message(STATUS "Building with Taskflow ${Taskflow_DIR}")
   add_definitions("-DHAVE_TF")
   list(APPEND OOX_LIBS Taskflow::Taskflow)
+  list(APPEND OOX_LOOP_MODES TF_FOR_EACH)
 endif()
 
 foreach(bench IN LISTS OOX_BENCHMARKS)

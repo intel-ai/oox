@@ -2,7 +2,7 @@
 export SHELL=bash
 
 .PHONY: all
-all: release test bench
+all: release test bench_fib
 
 release:
 	cmake -B build -S . -DCMAKE_BUILD_TYPE=RelWithDebInfo && make -C build -j$(shell nproc)
@@ -20,10 +20,10 @@ install:
 	make -C build install
 
 bench_loops:
-	@echo ---------------------------------------------------------------
-	@echo -e "Benchmark                \tIters\tTime\tCPU\tUnit"
-	@echo ---------------------------------------------------------------
-	@for x in $(shell ls -1 build/benchmarks/bench_loops_*) ; do numactl -N 0 $$x --benchmark_format=csv 2>/dev/null | grep Loop | tr , '\t'; done
+	@echo ----------------------------------------------------------------------------
+	@echo -e "Loop mode\tBench\tSize            \tIters\tTime\tCPU\tUnit"
+	@echo ----------------------------------------------------------------------------
+	@for x in $(shell ls -1 build/benchmarks/bench_loops_*) ; do numactl -N 0 $$x --benchmark_format=csv 2>/dev/null | grep /real_time | tr /, '\t'; done
 
 bench_fib:
 	numactl -N 0 build/benchmarks/bench_fib

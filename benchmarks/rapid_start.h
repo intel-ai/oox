@@ -42,7 +42,6 @@ class distribution_function : public distribution_base {
         const int start = my_start + part*step + std::min(remainder, part);
         part++;
         const int end = my_start + part*step + std::min(remainder, part);
-        #pragma ivdep
         #pragma forceinline
         my_func( start, end, part );
     }

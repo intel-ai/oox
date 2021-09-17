@@ -38,7 +38,7 @@
 #define TBB_BEST TBB_STATIC
 #endif
 
-#define TF_SIMPLE 30
+#define TF_FOR_EACH 30
 
 #ifndef PARALLEL
 #define PARALLEL TBB_SIMPLE
@@ -46,7 +46,7 @@
 
 #if PARALLEL < TBB_SIMPLE
 #define __USE_OPENMP__ 1
-#elif PARALLEL < TF_SIMPLE
+#elif PARALLEL < TF_FOR_EACH
 #define __USE_TBB__ 1
 #else
 #define __USE_TF__ 1
@@ -134,7 +134,7 @@ tf::Taskflow taskflow;
 
 static int InitParallel(int n = 0)
 {
-    nThreads = n? n : tbb::info::default_concurrency(); //tbb::this_task_arena::max_concurrency();
+    nThreads = n? n : ::tbb::info::default_concurrency(); //tbb::this_task_arena::max_concurrency();
 #if __USE_TBB__
     if(TBB_INTERFACE_VERSION != TBB_runtime_interface_version()) {
         fprintf(stderr, "ERROR: Compiled with TBB interface version " __TBB_STRING(TBB_INTERFACE_VERSION) " while runtime provides %d\n",
@@ -363,7 +363,7 @@ void parallel_for( Iter s, Iter e, Iter g, const Body &b) {
 #elif PARALLEL == TBB_RAPID
     g_rs.parallel_ranges(s, e, executive_range);
 
-#elif PARALLEL == TF_SIMPLE
+#elif PARALLEL == TF_FOR_EACH
     taskflow.for_each_index(s, e, 1, executive_range);
     executor.run(taskflow).get();
 

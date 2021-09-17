@@ -8,6 +8,7 @@ project(OOX VERSION 0.2.0 LANGUAGES CXX)
 option(OOX_BUILD_BENCHMARKS "Enables builds of benchmarks" ON)
 option(OOX_BUILD_TESTS "Enables builds of tests" ON)
 option(OOX_ENABLE_TBB "Enable TBB for threading (if found)" ON)
+option(OOX_ENABLE_OMP "Enable OpenMP for comparison (if found)" ON)
 option(OOX_ENABLE_TF "Enable Taskflow for threading (if found)" ON)
 
 # Global features
@@ -40,7 +41,9 @@ if(OOX_ENABLE_TF)
   find_package(Taskflow)  # not REQUIRED
 endif()
 
-find_package(OpenMP)
+if(OOX_ENABLE_OMP)
+  find_package(OpenMP)
+endif()
 
 # Library
 add_library(${PROJECT_NAME} INTERFACE)

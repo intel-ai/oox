@@ -19,7 +19,8 @@ This approach enables beautifully concise recursive parallelism programming like
 ```C++
 oox::var<int> Fib(int n) {         // OOX: High-level continuation style programming
     if(n < 2) return n;
-    return oox::run(std::plus<int>(), oox::run(Fib, n-1), Fib(n-2));
+    auto left = oox::run(Fib, n-1);
+    return oox::run(std::plus<int>(), std::move(left), Fib(n-2));
 }
 ```
 In contrast, both Intel Threading Building Blocks (TBB) and TaskFlow examples do block, which makes them slower than OOX besides requiring verboser coding:
@@ -80,4 +81,6 @@ Access types of `oox::var`'s stored value:
 - **Final**: dispose after use: `oox::var<A>&& a`
 
 ## More resources
-Please see https://habr.com/en/company/intel/blog/542908/ for more info.
+* Blog: https://habr.com/en/company/intel/blog/542908/
+* Slides: https://www.slideshare.net/secret/ifHWb6mqkpBOn2
+

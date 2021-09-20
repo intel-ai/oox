@@ -25,16 +25,17 @@ namespace ArchSample {
     T g() { return 2; }
     T h() { return 3; }
     T test() {
-        oox_var<T> a, b, c;
-        oox_run([](T&A){A=f();}, a);
-        oox_run([](T&B){B=g();}, b);
-        oox_run([](T&C){C=h();}, c);
-        oox_run([](T&A, T B){A+=B;}, a, b);
-        oox_run([](T&B, T C){B+=C;}, b, c);
-        oox_wait_for_all(b);
-        return oox_wait_and_get(a);
+        oox::var<T> a, b, c;
+        oox::run([](T&A){A=f();}, a);
+        oox::run([](T&B){B=g();}, b);
+        oox::run([](T&C){C=h();}, c);
+        oox::run([](T&A, T B){A+=B;}, a, b);
+        oox::run([](T&B, T C){B+=C;}, b, c);
+        oox::wait_for_all(b);
+        return oox::wait_and_get(a);
     }
 }
+
 namespace Fib0 {
     // Serial
     int Fib(int n) {
@@ -44,17 +45,17 @@ namespace Fib0 {
 }
 namespace Fib1 {
     // Concise demonstration
-    oox_var<int> Fib(int n) {
+    oox::var<int> Fib(int n) {
         if(n < 2) return n;
-        return oox_run(std::plus<int>(), oox_run(Fib, n-1), oox_run(Fib, n-2) );
+        return oox::run(std::plus<int>(), oox::run(Fib, n-1), oox::run(Fib, n-2) );
     }
 }
 namespace Fib2 {
     // Optimized number and order of tasks
-    oox_var<int> Fib(int n) {                                         // OOX: High-level continuation style
+    oox::var<int> Fib(int n) {                                         // OOX: High-level continuation style
         if(n < 2) return n;
-        auto right = oox_run(Fib, n-2);                               // spawn right child
-        return oox_run(std::plus<int>(), Fib(n-1), std::move(right)); // assign continuation
+        auto right = oox::run(Fib, n-2);                               // spawn right child
+        return oox::run(std::plus<int>(), Fib(n-1), std::move(right)); // assign continuation
     }
 }
 
@@ -78,30 +79,30 @@ size_t disk_usage(INode& node) {
 }
 }
 namespace Simple {
-oox_var<size_t> disk_usage(INode& node)
+oox::var<size_t> disk_usage(INode& node)
 {
     if (node.is_file())
         return node.size();
-    oox_var<size_t> sum = 0;
+    oox::var<size_t> sum = 0;
     for (auto &subnode : node)
-        oox_run([](size_t &sm, // serialized on write operation
-                 size_t sz){ sm += sz; }, sum, oox_run(disk_usage, std::ref(subnode))); // parallel recursive leaves
+        oox::run([](size_t &sm, // serialized on write operation
+                 size_t sz){ sm += sz; }, sum, oox::run(disk_usage, std::ref(subnode))); // parallel recursive leaves
     return sum;
 }
 }//namespace Filesystem::Simple
 #if 0
 namespace AntiDependence {
-oox_var<size_t> disk_usage(INode& node)
+oox::var<size_t> disk_usage(INode& node)
 {
     if (node.is_file())
         return node.size();
     typedef tbb::concurrent_vector<size_t> cv_t;
     typedef cv_t *cv_ptr_t;
-    oox_var<cv_ptr_t> resv = new cv_t;
+    oox::var<cv_ptr_t> resv = new cv_t;
     for (auto &subnode : node)
-        oox_run([](const cv_ptr_t &v, // make it read-only (but not copyable) and thus parallel
-                            size_t s){ v->push_back(s); }, resv, oox_run(disk_usage, std::ref(subnode)));
-    return oox_run([](cv_ptr_t &v) { // make it read-write to induce anti-dependence from the above read-only tasks
+        oox::run([](const cv_ptr_t &v, // make it read-only (but not copyable) and thus parallel
+                            size_t s){ v->push_back(s); }, resv, oox::run(disk_usage, std::ref(subnode)));
+    return oox::run([](cv_ptr_t &v) { // make it read-write to induce anti-dependence from the above read-only tasks
         size_t res = std::accumulate(v->begin(), v->end(), 0);
         delete v; v = nullptr;      // release memory, reset the pointer
         return res;
@@ -111,7 +112,7 @@ oox_var<size_t> disk_usage(INode& node)
 #endif
 #if 0
 namespace Extended {
-oox_var<size_t> disk_usage(INode &node)
+oox::var<size_t> disk_usage(INode &node)
 {
     if (node.is_file())
         return node.size();
@@ -119,9 +120,9 @@ oox_var<size_t> disk_usage(INode &node)
     cv_t *v = new cv_t;
     std::vector<oox_node> tasks;
     for (auto &subnode : *node)
-        tasks.push_back(oox_run( [v](size_t s){ v->push_back(s); }, oox_run(disk_usage, std::ref(subnode))) );
+        tasks.push_back(oox::run( [v](size_t s){ v->push_back(s); }, oox::run(disk_usage, std::ref(subnode))) );
     auto join_node = oox_join( tasks.begin(), tasks.end() );
-    return oox_run( join_node,              // use explicit flow-dependence
+    return oox::run( join_node,              // use explicit flow-dependence
         [v]{
             size_t res = std::accumulate(v->begin(), v->end(), 0);
             delete v;                       // release memory
@@ -151,17 +152,17 @@ int LCS( const char* x, size_t xlen, const char* y, size_t ylen )
 namespace Straight {
 int LCS( const char* x, size_t xlen, const char* y, size_t ylen )
 {
-    auto F = new oox_var<int>[MAX_LEN+1][MAX_LEN+1];
-    oox_var<int> zero(0);
+    auto F = new oox::var<int>[MAX_LEN+1][MAX_LEN+1];
+    oox::var<int> zero(0);
     auto f = [x,y,xlen,ylen](int i, int j, int F11, int F01, int F10) {
         return x[i-1]==y[j-1] ? F11+1 : std::max(F01, F10);
     };
 
     for( size_t i=1; i<=xlen; ++i )
         for( size_t j=1; j<=ylen; ++j )
-            F[i][j] = std::move(oox_run(f, i, j, i+j==0?zero:F[i-1][j-1], j==0?zero:F[i][j-1], i==0?zero:F[i-1][j]));
+            F[i][j] = std::move(oox::run(f, i, j, i+j==0?zero:F[i-1][j-1], j==0?zero:F[i][j-1], i==0?zero:F[i-1][j]));
 
-    auto r = oox_wait_and_get(F[xlen][ylen]);
+    auto r = oox::wait_and_get(F[xlen][ylen]);
     delete [] F;
     return r;
 }}
@@ -191,17 +192,17 @@ struct RecursionBody {
                     F[i][j] = X[i-1]==Y[j-1] ? F[i-1][j-1]+1 : max(F[i][j-1], F[i-1][j]);
             return oox_node();
         }
-        oox_node node00 = oox_run( *this, r.quadrant(0,0) );
-        oox_node node10 = oox_run( *this, r.quadrant(1,0), node00 );
-        oox_node node01 = oox_run( *this, r.quadrant(0,1), node00 );
-        return oox_run( *this, r.quadrant(1,1), node10, node01 );
+        oox_node node00 = oox::run( *this, r.quadrant(0,0) );
+        oox_node node10 = oox::run( *this, r.quadrant(1,0), node00 );
+        oox_node node01 = oox::run( *this, r.quadrant(0,1), node00 );
+        return oox::run( *this, r.quadrant(1,1), node10, node01 );
     }
 };
 void LCS( const char* x, size_t xlen, const char* y, size_t ylen ) {
     int F[MAX_LEN+1][MAX_LEN+1];
     RecursionBody rf(F, x, y);
 
-    oox_wait_and_get( rf(Range2D(0,xlen,0,ylen)) );
+    oox::wait_and_get( rf(Range2D(0,xlen,0,ylen)) );
 }}
 #endif
 
@@ -220,18 +221,18 @@ void LCS( const char* x, size_t xlen, const char* y, size_t ylen ) {
 int plus(int a, int b) { return a+b; }
 
 TEST(OOX, Simple) {
-    const oox_var<int> a = oox_run(plus, 2, 3);
-    oox_var<int> b = oox_run(plus, 1, a);
-    ASSERT_EQ(oox_wait_and_get(a), 5);
-    ASSERT_EQ(oox_wait_and_get(b), 6);
+    const oox::var<int> a = oox::run(plus, 2, 3);
+    oox::var<int> b = oox::run(plus, 1, a);
+    ASSERT_EQ(oox::wait_and_get(a), 5);
+    ASSERT_EQ(oox::wait_and_get(b), 6);
 }
 TEST(OOX, DISABLED_Empty) { // TODO!
-    oox_var<int> a;
-    oox_var<int> b = oox_run(plus, 1, a);
+    oox::var<int> a;
+    oox::var<int> b = oox::run(plus, 1, a);
     //a = 2;
     // optional, future, ref?
-    ASSERT_EQ(oox_wait_and_get(a), 0);
-    ASSERT_EQ(oox_wait_and_get(b), 1);
+    ASSERT_EQ(oox::wait_and_get(a), 0);
+    ASSERT_EQ(oox::wait_and_get(b), 1);
 }
 TEST(OOX, Arch) {
     int arch = ArchSample::test();
@@ -244,13 +245,13 @@ TEST(OOX, Fib) {
     int x = 25;
 #endif
     int fib0 = Fib0::Fib(x);
-    int fib1 = oox_wait_and_get(Fib1::Fib(x));
-    int fib2 = oox_wait_and_get(Fib2::Fib(x));
+    int fib1 = oox::wait_and_get(Fib1::Fib(x));
+    int fib2 = oox::wait_and_get(Fib2::Fib(x));
     ASSERT_TRUE(fib0 == fib1 && fib1 == fib2);
 }
 TEST(OOX, FS) {
     int files0 = Filesystem::Serial::disk_usage(Filesystem::tree[0]);
-    int files1 = oox_wait_and_get(Filesystem::Simple::disk_usage(Filesystem::tree[0]));
+    int files1 = oox::wait_and_get(Filesystem::Simple::disk_usage(Filesystem::tree[0]));
     ASSERT_EQ(files0, files1);
 }
 TEST(OOX, Wavefront) {

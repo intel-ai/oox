@@ -18,16 +18,16 @@ BENCHMARK(Fib_Serial)->Unit(benchmark::kMillisecond)->UseRealTime();
 
 
 namespace OOX {
-    oox_var<int> Fib(int n) {
+    oox::var<int> Fib(int n) {
         if(n < 2) return n;
-        auto right = oox_run(Fib, n-2);
-        return oox_run(std::plus<int>(), Fib(n-1), std::move(right));
+        auto right = oox::run(Fib, n-2);
+        return oox::run(std::plus<int>(), Fib(n-1), std::move(right));
     }
 }
 // Define another benchmark
 static void Fib_OOX(benchmark::State& state) {
   for (auto _ : state)
-    oox_wait_and_get(OOX::Fib(FibN));
+    oox::wait_and_get(OOX::Fib(FibN));
 }
 BENCHMARK(Fib_OOX)->Unit(benchmark::kMillisecond)->UseRealTime();
 

@@ -224,7 +224,7 @@ TEST(OOX, Simple) {
     const oox::var<int> a = oox::run(plus, 2, 3);
     oox::var<int> b = oox::run(plus, 1, a);
     ASSERT_EQ(oox::wait_and_get(a), 5);
-    ASSERT_EQ(oox::wait_and_get(b), 6);
+    ASSERT_EQ(b.get(), 6);
 }
 TEST(OOX, DISABLED_Empty) { // TODO!
     oox::var<int> a;

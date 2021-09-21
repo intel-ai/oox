@@ -47,6 +47,7 @@ struct var : public oox_node {
     var(T&& t)      noexcept : my_value( std::move(t) ) { }
     var(var<T>&& t) : my_value( std::move(t.my_value) ) { }
     var& operator=(var<T>&& t) { my_value = std::move(t.my_value); return *this; }
+    T get() { return my_value; }
 };
 
 template<>
@@ -129,7 +130,7 @@ struct task_life {
     }
 };
 
-#if HAVE_TBB ///////////////////////// TBB ////////////////////////////////////////
+#if HAVE_TBB ///////////////////////// TBB ///////////////////////////////////////////
 #define OOX_USING_TBB
 using tbb::detail::d1::execution_data;
 using tbb_task = tbb::detail::d1::task;
@@ -255,7 +256,7 @@ struct task : task_life {
         waiter.set_value();
     }
 };
-#endif // HAVE_TBB,TF /////////////////////////////////////////////////////////////////////
+#endif // HAVE_TBB,TF ////////////////////////////////////////////////////////////////
 
 struct task_node;
 struct oox_var_base;
@@ -534,7 +535,7 @@ struct oox_var_base {
     task_node*  current_task = nullptr;
     void*       storage_ptr;
     int         storage_offset; // task_node* original = ptr - offset
-    short int   current_port = 0; // the problem can arise from concurrent accesses to oox_var, TODO: check
+    short int   current_port = 0; // the problem can arise from concurrent accesses to oox::var, TODO: check
     bool        is_forward = false;  // indicate if it refers to another oox::var recursively
 
     void set_next_writer( int output_port, task_node* d ) {
@@ -647,6 +648,10 @@ public:
         return *this;
     }
     ~var() { release(); }
+    T get() {
+        wait();
+        return *(T*)storage_ptr;
+    }
 };
 
 template<>

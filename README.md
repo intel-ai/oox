@@ -1,4 +1,4 @@
-# OOX 2.0
+# OOX
 Out-of-Order Executor library. Yet another approach to efficient and scalable tasking API and task scheduling.
 
 ## Try it

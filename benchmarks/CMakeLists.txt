@@ -4,6 +4,7 @@ find_package(benchmark REQUIRED)
 
 if(OpenMP_FOUND)
   list(APPEND OOX_LOOP_MODES OMP_STATIC OMP_DYNAMIC)
+  add_definitions("-DHAVE_OMP")
 endif()
 
 if(TBB_FOUND)

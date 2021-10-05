@@ -56,10 +56,14 @@
 #include <stdio.h>
 #include <atomic>
 
+#if HAVE_TBB
 #include <tbb/info.h>
-#if __USE_OPENMP__
+#endif
+#if HAVE_OMP
 #include <omp.h>
-#elif __USE_TBB__
+#endif
+
+#if __USE_TBB__
 #if PARALLEL == TBB_RAPID
     #include "rapid_start.h"
 #endif
@@ -132,10 +136,20 @@ tf::Executor executor;
 tf::Taskflow taskflow;
 #endif // __USE_TF__
 
+static int GetNumThreads() {
+#if HAVE_TBB
+    return ::tbb::info::default_concurrency(); //tbb::this_task_arena::max_concurrency();
+#elif HAVE_OMP
+    return omp_get_max_threads();
+#else
+    return std::thread::hardware_concurrency();
+#endif
+}
+
 static int InitParallel(int n = 0)
 {
-    nThreads = n? n : ::tbb::info::default_concurrency(); //tbb::this_task_arena::max_concurrency();
 #if __USE_TBB__
+    nThreads = n? n : GetNumThreads();
     if(TBB_INTERFACE_VERSION != TBB_runtime_interface_version()) {
         fprintf(stderr, "ERROR: Compiled with TBB interface version " __TBB_STRING(TBB_INTERFACE_VERSION) " while runtime provides %d\n",
             TBB_runtime_interface_version());
@@ -210,7 +224,7 @@ static int InitParallel(int n = 0)
     setenv("KMP_VERSION", "1", 1);
 //    setenv("KMP_D_DEBUG", "7", 1);
 #endif
-    //nThreads = n? n : omp_get_max_threads();
+    nThreads = n? n : GetNumThreads();
 
     // configure OMP environment
     printf("Setting %d threads for OMP\n", nThreads); fflush(0);
@@ -234,7 +248,7 @@ static int InitParallel(int n = 0)
 #endif
     }
 #elif __USE_TF__
-    //nThreads = n? n : std::thread::hardware_concurrency();
+    nThreads = n? n : GetNumThreads();
     
     printf("Setting %d threads for TaskFlow\n", nThreads); fflush(0);
     taskflow.for_each_index(0, nThreads, 1, [](int _){});

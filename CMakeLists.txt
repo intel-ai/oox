@@ -7,15 +7,18 @@ project(OOX VERSION 0.2.0 LANGUAGES CXX)
 # build options
 option(OOX_BUILD_BENCHMARKS "Enables builds of benchmarks" ON)
 option(OOX_BUILD_TESTS "Enables builds of tests" ON)
-option(OOX_ENABLE_TBB "Enable TBB for threading (if found)" ON)
+option(OOX_ENABLE_TBB "Enable TBB for threading (priority)" ON)
+option(OOX_LOCAL_TBB "Force local copy of TBB" OFF)
+option(OOX_ENABLE_TF "Enable Taskflow for threading" ON)
+option(OOX_LOCAL_TF "Force local copy of TaskFlow" OFF)
 option(OOX_ENABLE_OMP "Enable OpenMP for comparison (if found)" ON)
-option(OOX_ENABLE_TF "Enable Taskflow for threading (if found)" ON)
 
 # Global features
 if(OOX_SANITIZE)
   add_compile_options(-fsanitize=${OOX_SANITIZE} -g -O1)
   add_link_options(-fsanitize=${OOX_SANITIZE} -g -O1)
   MESSAGE(STATUS "Building with -fsanitize=" ${OOX_SANITIZE})
+  set(TBB_SANITIZE ${OOX_SANITIZE})
 endif()
 
 # Turn on the verbose
@@ -34,11 +37,27 @@ include(CTest)
 find_package(Threads REQUIRED)
 
 if(OOX_ENABLE_TBB)
-  find_package(TBB)  # not REQUIRED
+  if(NOT OOX_LOCAL_TBB)
+    find_package(TBB)  # not REQUIRED
+  endif()
+  if(NOT TBB_FOUND)
+    option(TBB_TEST OFF)
+    add_subdirectory(thirdparty/oneTBB onetbb)
+    set(TBB_FOUND ON)
+  endif()
 endif()
 
 if(OOX_ENABLE_TF)
-  find_package(Taskflow)  # not REQUIRED
+  if(NOT OOX_LOCAL_TF)
+    find_package(Taskflow)  # not REQUIRED
+  endif()
+  if(NOT Taskflow_FOUND)
+    option(TF_BUILD_TESTS OFF)
+    option(TF_BUILD_EXAMPLES OFF)
+    add_subdirectory(thirdparty/taskflow taskflow)
+    add_library(Taskflow::Taskflow ALIAS Taskflow)
+    set(Taskflow_FOUND ON)
+  endif()
 endif()
 
 if(OOX_ENABLE_OMP)

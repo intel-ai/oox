@@ -1,0 +1,6 @@
+[submodule "thirdparty/oneTBB"]
+	path = thirdparty/oneTBB
+	url = https://github.com/oneapi-src/oneTBB
+[submodule "thirdparty/taskflow"]
+	path = thirdparty/taskflow
+	url = https://github.com/taskflow/taskflow

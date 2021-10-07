@@ -38,10 +38,10 @@ find_package(Threads REQUIRED)
 
 if(OOX_ENABLE_TBB)
   if(NOT OOX_LOCAL_TBB)
-    find_package(TBB 2021)  # not REQUIRED
+    find_package(TBB 2021 QUIET)  # not REQUIRED
   endif()
   if(NOT TBB_FOUND)
-    execute_process(COMMAND git submodule update --init thirdparty/oneTBB/
+    execute_process(COMMAND git submodule update --init --depth=1 thirdparty/oneTBB/
                     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} )
     option(TBB_TEST OFF)
     add_subdirectory(thirdparty/oneTBB onetbb)
@@ -51,10 +51,10 @@ endif()
 
 if(OOX_ENABLE_TF)
   if(NOT OOX_LOCAL_TF)
-    find_package(Taskflow)  # not REQUIRED
+    find_package(Taskflow QUIET)  # not REQUIRED
   endif()
   if(NOT Taskflow_FOUND)
-    execute_process(COMMAND git submodule update --init thirdparty/taskflow/
+    execute_process(COMMAND git submodule update --init --depth=1 thirdparty/taskflow/
                     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} )
     option(TF_BUILD_TESTS OFF)
     option(TF_BUILD_EXAMPLES OFF)
@@ -70,6 +70,7 @@ endif()
 
 # Library
 add_library(${PROJECT_NAME} INTERFACE)
+add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_11)
 target_link_libraries(${PROJECT_NAME} INTERFACE Threads::Threads)
 target_include_directories(${PROJECT_NAME} INTERFACE

@@ -38,9 +38,11 @@ find_package(Threads REQUIRED)
 
 if(OOX_ENABLE_TBB)
   if(NOT OOX_LOCAL_TBB)
-    find_package(TBB)  # not REQUIRED
+    find_package(TBB 2021)  # not REQUIRED
   endif()
   if(NOT TBB_FOUND)
+    execute_process(COMMAND git submodule update --init thirdparty/oneTBB/
+                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} )
     option(TBB_TEST OFF)
     add_subdirectory(thirdparty/oneTBB onetbb)
     set(TBB_FOUND ON)
@@ -52,6 +54,8 @@ if(OOX_ENABLE_TF)
     find_package(Taskflow)  # not REQUIRED
   endif()
   if(NOT Taskflow_FOUND)
+    execute_process(COMMAND git submodule update --init thirdparty/taskflow/
+                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} )
     option(TF_BUILD_TESTS OFF)
     option(TF_BUILD_EXAMPLES OFF)
     add_subdirectory(thirdparty/taskflow taskflow)

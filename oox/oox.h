@@ -1,3 +1,7 @@
+// Copyright (C) 2021 Intel Corporation
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #ifndef __OOX_H__
 #define __OOX_H__
 

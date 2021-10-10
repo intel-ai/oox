@@ -1,3 +1,7 @@
+// Copyright (C) 2014 Intel Corporation
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #include <utility>
 #include <functional>
 #include <type_traits>

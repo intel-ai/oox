@@ -1,3 +1,7 @@
+# Copyright (C) 2021 Intel Corporation
+#
+# SPDX-License-Identifier: Apache-2.0
+
 list(APPEND OOX_BENCHMARKS bench_fib)
 
 find_package(benchmark REQUIRED)

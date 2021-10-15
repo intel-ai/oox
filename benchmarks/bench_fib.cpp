@@ -2,17 +2,14 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+#define TBB_PREVIEW_TASK_GROUP_EXTENSIONS 1
+
 #include <benchmark/benchmark.h>
-#include <oox/oox.h>
+#include "../examples/fibonacci.h"
+using namespace Fibonacci;
 
 constexpr int FibN=28;
 
-namespace Serial {
-    int Fib(volatile int n) {
-        if(n < 2) return n;
-        return Fib(n-1) + Fib(n-2);
-    }
-}
 static void Fib_Serial(benchmark::State& state) {
   for (auto _ : state)
     Serial::Fib(FibN);
@@ -20,41 +17,62 @@ static void Fib_Serial(benchmark::State& state) {
 // Register the function as a benchmark
 BENCHMARK(Fib_Serial)->Unit(benchmark::kMillisecond)->UseRealTime();
 
-
-namespace OOX {
-    oox::var<int> Fib(int n) {
-        if(n < 2) return n;
-        auto right = oox::run(Fib, n-2);
-        return oox::run(std::plus<int>(), Fib(n-1), std::move(right));
-    }
-}
-// Define another benchmark
-static void Fib_OOX(benchmark::State& state) {
+static void Fib_OOX1(benchmark::State& state) {
   for (auto _ : state)
-    oox::wait_and_get(OOX::Fib(FibN));
+    oox::wait_and_get(OOX1::Fib(FibN));
 }
-BENCHMARK(Fib_OOX)->Unit(benchmark::kMillisecond)->UseRealTime();
+BENCHMARK(Fib_OOX1)->Unit(benchmark::kMillisecond)->UseRealTime();
+
+static void Fib_OOX2(benchmark::State& state) {
+  for (auto _ : state)
+    oox::wait_and_get(OOX2::Fib(FibN));
+}
+BENCHMARK(Fib_OOX2)->Unit(benchmark::kMillisecond)->UseRealTime();
 
 #if HAVE_TBB
-
 #include <tbb/tbb.h>
-namespace TBB {
-    int Fib(int n) {                  // TBB: High-level blocking style
+namespace TBB1 {
+    int Fib(int n, tbb::task_group_context &ctx) {                  // TBB: High-level blocking style
         if(n < 2) return n;
         int left, right;
         tbb::parallel_invoke(
-            [&] { left = Fib(n-1); },
-            [&] { right = Fib(n-2); }
+            [&] { left = Fib(n-1, ctx); },
+            [&] { right = Fib(n-2, ctx); },
+            ctx
         );
         return left + right;
     }
 }
 
-static void Fib_TBB(benchmark::State& state) {
-  for (auto _ : state)
-    TBB::Fib(FibN);
+static void Fib_TBB1(benchmark::State& state) {
+  for (auto _ : state) {
+    tbb::task_group_context ctx;
+    TBB1::Fib(FibN, ctx);
+  }
 }
-BENCHMARK(Fib_TBB)->Unit(benchmark::kMillisecond)->UseRealTime();
+BENCHMARK(Fib_TBB1)->Unit(benchmark::kMillisecond)->UseRealTime();
+
+#if TBB_INTERFACE_VERSION >= 12030
+namespace TBB2 {
+    int Fib(int n, tbb::task_group_context &ctx) {                  // TBB: High-level blocking style
+        if(n < 2) return n;
+        int left, right;
+        tbb::task_group tg(ctx);
+        tg.run( [&] { right = Fib(n-2, ctx); } );
+        left = Fib(n-1, ctx);
+        tg.wait();
+        return left + right;
+    }
+}
+
+static void Fib_TBB2(benchmark::State& state) {
+  for (auto _ : state) {
+    tbb::task_group_context ctx;
+    TBB2::Fib(FibN, ctx);
+  }
+}
+BENCHMARK(Fib_TBB2)->Unit(benchmark::kMillisecond)->UseRealTime();
+#endif
 
 #endif //HAVE_TBB
 

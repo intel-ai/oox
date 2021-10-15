@@ -35,12 +35,12 @@
 namespace oox {
 
 #if OOX_SERIAL_DEBUG //////////////////// Immediate execution //////////////////////////////////
-class oox_node {
-    oox_node &operator=(const oox_node &) = delete;
+class node {
+    node &operator=(const node &) = delete;
 };
 
 template<typename T>
-struct var : public oox_node {
+struct var : public node {
     static_assert(std::is_same<T, typename std::decay<T>::type>::value,
                   "Specialize oox::var only by plain types."
                   "For references, use reference_wrapper,"
@@ -55,7 +55,7 @@ struct var : public oox_node {
 };
 
 template<>
-struct var<void> : public oox_node {
+struct var<void> : public node {
     var() {}
 };
 
@@ -85,9 +85,9 @@ struct gen_oox<var<VT> > {
 };
 template<>
 struct gen_oox<void> {
-    typedef oox_node type;
+    typedef node type;
     template< typename F, typename... Args >
-    static type run(F&& f, Args&&... args) { std::forward<F>(f)(std::forward<Args>(args)...); return oox_node(); }
+    static type run(F&& f, Args&&... args) { std::forward<F>(f)(std::forward<Args>(args)...); return node(); }
 };
 template< typename T> using var_type = typename gen_oox<T>::type;
 
@@ -101,7 +101,7 @@ auto run(F&& f, Args&&... args)->var_type<decltype(f(unoox(std::forward<Args>(ar
 template<typename T>
 T wait_and_get(const var<T> &ov) { return ov.my_value; }
 
-void wait_for_all(oox_node &) {}
+void wait_for_all(node &) {}
 
 #else ///////////////////////////////// Parallel execution  ///////////////////////////////////
 
@@ -670,7 +670,7 @@ public:
     }
 };
 
-typedef var<void> oox_node;
+typedef var<void> node;
 
 namespace internal {
 template< typename T >
